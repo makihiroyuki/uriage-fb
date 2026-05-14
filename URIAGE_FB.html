@@ -501,60 +501,117 @@ async function startLoadingWithDrive() {
   const feed = el('ls-feed-inner');
   const statusEl = el('ls-status');
 
-  // ヘッダー行
   feed.innerHTML = `<div class="ls-row header-row">
     <span>SKU</span><span>商品名</span><span style="text-align:right">数量</span>
     <span style="text-align:right">粗利</span><span style="text-align:right">売上</span>
   </div>`;
-
   statusEl.textContent = 'CONNECTING TO DRIVE...';
 
-  try {
-    // データ取得（refreshDataの処理を流用）
-    await refreshData();
+  // SKUごとの集計をリアルタイムで保持するMap
+  const liveMap = new Map();
+  const FEE_RATE = 0.10;
 
-    // 今月全期間のデータで集計（粗利昇順 = 下位から表示）
-    const agg = aggregate(allRows).filter(r => /^m-ctc/i.test(r.rawCode));
-    agg.sort((a,b) => (a.totalProfit||0) - (b.totalProfit||0)); // 昇順（下位から）
+  function addRowToFeed(skuKey, entry) {
+    const m = masterMap.get(skuKey) || null;
+    const buyPrice = m ? (m.buyPrice||0) : null;
+    const shipFee  = m ? (m.shipFee||0)  : null;
+    const totalQty    = entry.qty;
+    const totalSales  = entry.totalSales;
+    const avgPrice    = entry.priceQty > 0 ? entry.totalPriceVal / entry.priceQty : null;
+    const hasCost     = buyPrice !== null && avgPrice !== null;
+    const totalProfit = hasCost
+      ? Math.round((avgPrice*(1-FEE_RATE)-buyPrice)*totalQty - shipFee) : null;
+    const isNeg   = totalProfit !== null && totalProfit < 0;
+    const profStr = totalProfit !== null
+      ? (totalProfit >= 0 ? '+¥' : '-¥') + fmt(Math.abs(totalProfit)) : '—';
+    const salesStr = totalSales ? '¥' + fmt(totalSales) : '—';
+    const name = (m && m.name) || entry.name;
+    const shortName = name.length > 26 ? name.slice(0,26) + '…' : name;
+    const onSale = m ? m.onSale : false;
 
-    statusEl.textContent = agg.length + ' SKUs LOADED — ' + allRows.length + ' ORDERS';
-
-    // 1行ずつジャーっと流す
-    let i = 0;
-    const interval = setInterval(() => {
-      if(i >= agg.length) {
-        clearInterval(interval);
-        el('ls-enter-btn').classList.add('show');
-        statusEl.textContent = 'READY — ENTER TO VIEW DASHBOARD';
-        return;
-      }
-      const row = agg[i];
-      const isNeg = row.totalProfit !== null && row.totalProfit < 0;
-      const profStr = row.totalProfit !== null
-        ? (row.totalProfit >= 0 ? '+¥' : '-¥') + fmt(Math.abs(row.totalProfit))
-        : '—';
-      const salesStr = row.totalSales ? '¥' + fmt(row.totalSales) : '—';
-      const shortName = row.name.length > 28 ? row.name.slice(0,28) + '…' : row.name;
-      const div = document.createElement('div');
-      div.className = 'ls-row ' + (isNeg ? 'neg' : 'pos');
+    // 既存行があれば更新、なければ追加
+    let div = feed.querySelector(`[data-sku="${CSS.escape(skuKey)}"]`);
+    if(!div) {
+      div = document.createElement('div');
+      div.dataset.sku = skuKey;
       div.style.animationDelay = '0ms';
-      div.innerHTML = `
-        <span class="c-sku">${esc(row.sku.slice(0,12))}</span>
-        <span class="c-name">${esc(shortName)}</span>
-        <span class="c-qty">${row.qty}</span>
-        <span class="c-profit">${profStr}</span>
-        <span class="c-sales">${salesStr}</span>`;
       feed.appendChild(div);
-      // 最新行が見えるようスクロール
-      feed.parentElement.scrollTop = feed.scrollHeight;
-      i++;
-    }, 60); // 60ms間隔でジャーっと
+    }
+    div.className = 'ls-row ' + (isNeg ? 'neg' : 'pos');
+    div.innerHTML = `
+      <span class="c-sku">${esc(skuKey.slice(0,12))}</span>
+      <span class="c-name" style="${onSale?'color:var(--accent)':''}">${esc(shortName)}</span>
+      <span class="c-qty">${totalQty}</span>
+      <span class="c-profit">${profStr}</span>
+      <span class="c-sales">${salesStr}</span>`;
+    // 最新行が見えるようスクロール
+    const feedEl = feed.parentElement;
+    feedEl.scrollTop = feedEl.scrollHeight;
+  }
+
+  try {
+    const rootId = cfg.folderId;
+    folderCache.clear();
+
+    // マスタDB取得
+    statusEl.textContent = 'LOADING MASTER DB...';
+    const rootFiles = await driveList(rootId);
+    const masterFile = rootFiles.find(f => MASTER_PATTERN.test(f.name));
+    if(masterFile) {
+      const buf = await downloadDriveFile(masterFile.id);
+      masterMap = parseMasterXlsx(buf);
+    }
+
+    // 年月確認
+    statusEl.textContent = 'SCANNING FOLDERS...';
+    const yms = await getAvailableYearMonths(rootId);
+    buildYmSelector(yms);
+    if(!yms.length) {
+      statusEl.textContent = 'NO DATA FOUND';
+      el('ls-enter-btn').classList.add('show');
+      return;
+    }
+
+    const today = new Date();
+    const cy = String(today.getFullYear());
+    const cm = String(today.getMonth()+1).padStart(2,'0');
+    const target = yms.find(y => y.year===cy && y.month===cm) || yms[0];
+    el('ym-select').value = target.year + '/' + target.month;
+
+    statusEl.textContent = 'LOADING ' + target.year + '.' + target.month + '...';
+
+    // CSVを1ファイルずつ読み込みながらリアルタイムで行を追加・更新
+    await loadYearMonth(rootId, target.year, target.month, (rows, mallCode, filename) => {
+      statusEl.textContent = 'READING ' + mallCode + ' — ' + allRows.length + ' ORDERS';
+      rows.forEach(r => {
+        const code = String(r['商品コード']||'').trim();
+        const key  = codeToKey(code);
+        if(!/^m-ctc/i.test(code)) return; // m-ctcのみ表示
+        const price = toNum(r['販売単価(税込)']);
+        const qty   = toNum(r['数量'])||1;
+        if(!liveMap.has(key)) {
+          liveMap.set(key, { qty:0, totalSales:0, totalPriceVal:0, priceQty:0,
+            name: cleanName(String(r['商品名']||'')) });
+        }
+        const e = liveMap.get(key);
+        e.qty += qty;
+        if(price !== null) { e.totalSales += price*qty; e.totalPriceVal += price*qty; e.priceQty += qty; }
+        addRowToFeed(key, e);
+      });
+    });
+
+    // ダッシュボード用にもapplyPeriodAndRender
+    applyPeriodAndRender();
+
+    const skuCount = liveMap.size;
+    statusEl.textContent = skuCount + ' SKUs — ' + allRows.length + ' ORDERS — READY';
+    el('ls-enter-btn').classList.add('show');
 
   } catch(err) {
     statusEl.textContent = 'ERROR: ' + err.message;
     el('ls-enter-btn').classList.add('show');
     el('ls-enter-btn').textContent = 'RETRY →';
-    el('ls-enter-btn').onclick = () => { location.reload(); };
+    el('ls-enter-btn').onclick = () => location.reload();
   }
 }
 
@@ -670,8 +727,8 @@ async function getAvailableYearMonths(rootId) {
   return yms.sort((a,b) => (b.year+b.month).localeCompare(a.year+a.month));
 }
 
-// 指定年月のCSVを全モールから取得
-async function loadYearMonth(rootId, year, month) {
+// 指定年月のCSVを全モールから取得（onFileLoaded: 1ファイル読むたびに呼ばれる）
+async function loadYearMonth(rootId, year, month, onFileLoaded) {
   allRows = [];
   let loadedMalls = 0;
 
@@ -694,6 +751,7 @@ async function loadYearMonth(rootId, year, month) {
         const text = new TextDecoder('shift-jis').decode(buf);
         const rows = parseCSV(text).map(r => ({ ...r, _mall: mallCode, _file: f.name }));
         allRows.push(...rows);
+        if(onFileLoaded) onFileLoaded(rows, mallCode, f.name);
       }
       loadedMalls++;
     } catch(e) { console.warn(mallFolder + ' 読み込みエラー:', e); }
