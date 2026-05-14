@@ -525,8 +525,11 @@ async function downloadDriveFile(fileId) {
   return await res.arrayBuffer();
 }
 
-// 利用可能な年月一覧を取得（rakutenフォルダを基準に探索）
+// 利用可能な年月一覧を取得（実際にCSVがある月のみ）
 async function getAvailableYearMonths(rootId) {
+  const today = new Date();
+  const currentYear  = String(today.getFullYear());
+  const currentMonth = String(today.getMonth()+1).padStart(2,'0');
   const yms = [];
   try {
     const rtId = await findFolder(rootId, 'rakuten');
@@ -534,10 +537,21 @@ async function getAvailableYearMonths(rootId) {
     const years = await driveList(rtId, 'application/vnd.google-apps.folder');
     for(const y of years) {
       if(!/^\d{4}$/.test(y.name)) continue;
+      // 未来の年はスキップ
+      if(parseInt(y.name) > parseInt(currentYear)) continue;
       const months = await driveList(y.id, 'application/vnd.google-apps.folder');
       for(const m of months) {
         if(!/^\d{1,2}$/.test(m.name)) continue;
-        yms.push({ year: y.name, month: m.name.padStart(2,'0') });
+        const mm = m.name.padStart(2,'0');
+        // 当年の場合、当月より未来はスキップ
+        if(y.name === currentYear && mm > currentMonth) continue;
+        // 実際にCSVファイルがあるか確認
+        let monthId = await findFolder(y.id, m.name);
+        if(!monthId) continue;
+        const csvFiles = await driveList(monthId);
+        const hasCSV = csvFiles.some(f => /\.csv$/i.test(f.name));
+        if(!hasCSV) continue;
+        yms.push({ year: y.name, month: mm });
       }
     }
   } catch(e) { console.warn('年月取得エラー:', e); }
@@ -556,7 +570,6 @@ async function loadYearMonth(rootId, year, month) {
       if(!mallId) continue;
       const yearId  = await findFolder(mallId, year);
       if(!yearId) continue;
-      // 月フォルダは "05" か "5" どちらでも対応
       let monthId = await findFolder(yearId, month);
       if(!monthId) monthId = await findFolder(yearId, String(parseInt(month,10)));
       if(!monthId) continue;
@@ -601,9 +614,15 @@ async function refreshData() {
       return;
     }
 
-    // 最新年月を自動選択して読み込み
-    const latest = yms[0];
-    await loadAndRender(rootId, latest.year, latest.month);
+    // 当月を優先、なければ最新月
+    const today = new Date();
+    const cy = String(today.getFullYear());
+    const cm = String(today.getMonth()+1).padStart(2,'0');
+    const target = yms.find(y => y.year===cy && y.month===cm) || yms[0];
+
+    // セレクターを対象月に合わせる
+    el('ym-select').value = target.year + '/' + target.month;
+    await loadAndRender(rootId, target.year, target.month);
 
   } catch(err) {
     setStatus('err', 'エラー: ' + err.message);
