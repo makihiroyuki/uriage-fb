@@ -501,7 +501,7 @@ const folderCache = new Map();
 async function driveList(parentId, mimeType=null) {
   let q = `'${parentId}' in parents and trashed=false`;
   if(mimeType) q += ` and mimeType='${mimeType}'`;
-  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&key=${cfg.apiKey}&pageSize=200`;
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&key=${cfg.apiKey}&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const res = await fetch(url);
   if(!res.ok) throw new Error('Drive API エラー ' + res.status + ' — フォルダIDとAPIキーを確認');
   const data = await res.json();
@@ -519,7 +519,7 @@ async function findFolder(parentId, name) {
 }
 
 async function downloadDriveFile(fileId) {
-  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${cfg.apiKey}`;
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${cfg.apiKey}&supportsAllDrives=true`;
   const res = await fetch(url);
   if(!res.ok) throw new Error('ファイルDL失敗: ' + fileId);
   return await res.arrayBuffer();
