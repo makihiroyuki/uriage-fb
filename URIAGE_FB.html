@@ -341,8 +341,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
     <div class="section-header">
       <div class="section-title">粗利ランキング（SKU別）</div>
       <div class="filter-row">
-        <button class="fbtn" data-f="all" onclick="setFilter(this)">ALL</button>
-        <button class="fbtn active" data-f="ctc" onclick="setFilter(this)" style="color:var(--accent3);border-color:rgba(64,200,160,.4)">m-ctc のみ</button>
+        <button class="fbtn active" data-f="all" onclick="setFilter(this)">ALL</button>
         <button class="fbtn" data-f="RT" onclick="setFilter(this)" style="color:var(--rt);border-color:rgba(255,107,53,.4)">楽天</button>
         <button class="fbtn" data-f="AZ" onclick="setFilter(this)" style="color:var(--az);border-color:rgba(74,158,255,.4)">Amazon</button>
         <button class="fbtn" data-f="AU" onclick="setFilter(this)" style="color:var(--au);border-color:rgba(0,184,160,.4)">AU PAY</button>
@@ -458,7 +457,7 @@ let cfg = loadCfg();
 let masterMap = new Map();
 let allRows = [];   // raw aggregated rows (all dates)
 let displayData = [];
-let currentFilter = 'ctc';
+let currentFilter = 'all';
 let sortKey = 'totalProfit';
 let sortDir = -1;
 let slideIndex = 0;
