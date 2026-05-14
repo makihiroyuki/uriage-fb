@@ -231,16 +231,20 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
   <div class="setup-card">
     <h2>Google Drive 設定</h2>
     <div class="field-row">
-      <label>Google Drive フォルダID</label>
-      <input type="text" id="folder-id" placeholder="例: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" />
+      <label>ルートフォルダID（「売上データ」フォルダ）</label>
+      <input type="text" id="folder-id" placeholder="例: 1NzEH1L_7uxeZf-r8W1OkOLzEHUPw7x_r" />
     </div>
     <div class="field-row">
-      <label>Google API Key（公開読み取り専用）</label>
+      <label>Google API Key</label>
       <input type="text" id="api-key" placeholder="例: AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" />
     </div>
-    <p style="font-size:11px;color:var(--text3);margin-top:-8px;line-height:1.7">
-      ※ Google Cloud Console で「Drive API」を有効にしAPIキーを発行。<br>
-      　 フォルダは「リンクを知っている全員が閲覧可能」に設定してください。
+    <p style="font-size:11px;color:var(--text3);margin-top:-8px;line-height:1.7;background:var(--surface2);padding:10px 14px;border-radius:8px;border:1px solid var(--border)">
+      📁 フォルダ構造はこの形で作ってください：<br>
+      　売上データ/ → rakuten/ → 2026/ → 05/ → CSVファイル<br>
+      　売上データ/ → amazon/ → 2026/ → 05/ → CSVファイル<br>
+      　売上データ/ → aupay/ → 2026/ → 05/ → CSVファイル<br>
+      　売上データ/ → mercari/ → 2026/ → 05/ → CSVファイル<br>
+      　売上データ/ → 商品マスタDB.xlsx（直下に置く）
     </p>
   </div>
 
@@ -274,6 +278,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
       <div class="top-date-label" id="period-label"></div>
     </div>
     <div class="top-right">
+      <select id="ym-select" onchange="onYmChange()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:12px;padding:5px 10px;outline:none;cursor:pointer">
+      </select>
       <button class="btn-sm" onclick="refreshData()">↻ 更新</button>
       <button class="btn-sm primary" onclick="startSlide()">▶ スライド</button>
       <button class="btn-sm" onclick="openCfgModal()">⚙ 設定</button>
@@ -482,47 +488,34 @@ function openCfgModal() {
 function closeCfgModal() { el('cfg-modal').classList.remove('open'); }
 
 // ============================================================
-// GOOGLE DRIVE API
+// GOOGLE DRIVE API — 階層フォルダ対応
+// 構造: ルート/ → rakuten|amazon|aupay|mercari/ → YYYY/ → MM/ → CSV
+//        ルート/ → 商品マスタDB.xlsx
 // ============================================================
-async function refreshData() {
-  setStatus('loading','最新ファイルを取得中...');
-  try {
-    const files = await listDriveFiles();
-    if(!files.length) { setStatus('err','Driveにファイルが見つかりません'); return; }
+const MALL_FOLDERS = ['rakuten','amazon','aupay','mercari'];
+const MALL_CODE_MAP = { rakuten:'RT', amazon:'AZ', aupay:'AU', mercari:'MC' };
 
-    const masterFile = files.find(f => MASTER_PATTERN.test(f.name));
-    const salesFiles = files.filter(f => !MASTER_PATTERN.test(f.name) && /\.csv$/i.test(f.name));
+// フォルダIDキャッシュ: "親ID/名前" → フォルダID
+const folderCache = new Map();
 
-    if(masterFile) {
-      const buf = await downloadDriveFile(masterFile.id);
-      masterMap = parseMasterXlsx(buf);
-    }
-
-    allRows = [];
-    for(const f of salesFiles) {
-      const mallCode = detectMall(f.name);
-      if(!mallCode) continue;
-      const buf = await downloadDriveFile(f.id);
-      const decoder = new TextDecoder('shift-jis');
-      const text = decoder.decode(buf);
-      const rows = parseCSV(text).map(r => ({ ...r, _mall: mallCode, _file: f.name }));
-      allRows.push(...rows);
-    }
-
-    setStatus('ok', `${files.length}ファイル読み込み完了 — 最終更新 ${now()}`);
-    applyPeriodAndRender();
-  } catch(err) {
-    setStatus('err', 'エラー: ' + err.message);
-    console.error(err);
-  }
-}
-
-async function listDriveFiles() {
-  const url = `https://www.googleapis.com/drive/v3/files?q='${cfg.folderId}'+in+parents+and+trashed=false&fields=files(id,name,modifiedTime)&key=${cfg.apiKey}&pageSize=200`;
+async function driveList(parentId, mimeType=null) {
+  let q = `'${parentId}' in parents and trashed=false`;
+  if(mimeType) q += ` and mimeType='${mimeType}'`;
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&key=${cfg.apiKey}&pageSize=200`;
   const res = await fetch(url);
-  if(!res.ok) throw new Error('Drive API エラー: ' + res.status + ' — フォルダIDとAPIキーを確認してください');
+  if(!res.ok) throw new Error('Drive API エラー ' + res.status + ' — フォルダIDとAPIキーを確認');
   const data = await res.json();
   return data.files || [];
+}
+
+async function findFolder(parentId, name) {
+  const cacheKey = parentId + '/' + name;
+  if(folderCache.has(cacheKey)) return folderCache.get(cacheKey);
+  const items = await driveList(parentId, 'application/vnd.google-apps.folder');
+  const found = items.find(f => f.name.toLowerCase() === name.toLowerCase());
+  const id = found ? found.id : null;
+  if(id) folderCache.set(cacheKey, id);
+  return id;
 }
 
 async function downloadDriveFile(fileId) {
@@ -532,11 +525,115 @@ async function downloadDriveFile(fileId) {
   return await res.arrayBuffer();
 }
 
-function detectMall(filename) {
-  for(const {pattern, mall} of FILE_PATTERNS) {
-    if(pattern.test(filename)) return mall;
+// 利用可能な年月一覧を取得（rakutenフォルダを基準に探索）
+async function getAvailableYearMonths(rootId) {
+  const yms = [];
+  try {
+    const rtId = await findFolder(rootId, 'rakuten');
+    if(!rtId) return yms;
+    const years = await driveList(rtId, 'application/vnd.google-apps.folder');
+    for(const y of years) {
+      if(!/^\d{4}$/.test(y.name)) continue;
+      const months = await driveList(y.id, 'application/vnd.google-apps.folder');
+      for(const m of months) {
+        if(!/^\d{1,2}$/.test(m.name)) continue;
+        yms.push({ year: y.name, month: m.name.padStart(2,'0') });
+      }
+    }
+  } catch(e) { console.warn('年月取得エラー:', e); }
+  return yms.sort((a,b) => (b.year+b.month).localeCompare(a.year+a.month));
+}
+
+// 指定年月のCSVを全モールから取得
+async function loadYearMonth(rootId, year, month) {
+  allRows = [];
+  let loadedMalls = 0;
+
+  for(const mallFolder of MALL_FOLDERS) {
+    const mallCode = MALL_CODE_MAP[mallFolder];
+    try {
+      const mallId  = await findFolder(rootId, mallFolder);
+      if(!mallId) continue;
+      const yearId  = await findFolder(mallId, year);
+      if(!yearId) continue;
+      // 月フォルダは "05" か "5" どちらでも対応
+      let monthId = await findFolder(yearId, month);
+      if(!monthId) monthId = await findFolder(yearId, String(parseInt(month,10)));
+      if(!monthId) continue;
+
+      const csvFiles = await driveList(monthId);
+      const csvOnly  = csvFiles.filter(f => /\.csv$/i.test(f.name));
+
+      for(const f of csvOnly) {
+        const buf  = await downloadDriveFile(f.id);
+        const text = new TextDecoder('shift-jis').decode(buf);
+        const rows = parseCSV(text).map(r => ({ ...r, _mall: mallCode, _file: f.name }));
+        allRows.push(...rows);
+      }
+      loadedMalls++;
+    } catch(e) { console.warn(mallFolder + ' 読み込みエラー:', e); }
   }
-  return null;
+  return loadedMalls;
+}
+
+async function refreshData() {
+  setStatus('loading', 'Drive を確認中...');
+  folderCache.clear();
+  try {
+    const rootId = cfg.folderId;
+
+    // 商品マスタDB（ルート直下）
+    const rootFiles = await driveList(rootId);
+    const masterFile = rootFiles.find(f => MASTER_PATTERN.test(f.name));
+    if(masterFile) {
+      setStatus('loading', '商品マスタDB を読み込み中...');
+      const buf = await downloadDriveFile(masterFile.id);
+      masterMap = parseMasterXlsx(buf);
+    }
+
+    // 年月セレクターを構築
+    setStatus('loading', '利用可能な年月を確認中...');
+    const yms = await getAvailableYearMonths(rootId);
+    buildYmSelector(yms);
+
+    if(!yms.length) {
+      setStatus('err', 'Driveにデータが見つかりません。フォルダ構造を確認してください。');
+      return;
+    }
+
+    // 最新年月を自動選択して読み込み
+    const latest = yms[0];
+    await loadAndRender(rootId, latest.year, latest.month);
+
+  } catch(err) {
+    setStatus('err', 'エラー: ' + err.message);
+    console.error(err);
+  }
+}
+
+async function loadAndRender(rootId, year, month) {
+  setStatus('loading', `${year}年${parseInt(month,10)}月 を読み込み中...`);
+  const loadedMalls = await loadYearMonth(rootId, year, month);
+  setStatus('ok', `${year}年${parseInt(month,10)}月 — ${loadedMalls}モール / ${allRows.length}件 読み込み完了 — ${now()}`);
+  applyPeriodAndRender();
+}
+
+function buildYmSelector(yms) {
+  const sel = el('ym-select');
+  sel.innerHTML = '';
+  yms.forEach(({year, month}) => {
+    const opt = document.createElement('option');
+    opt.value = year + '/' + month;
+    opt.textContent = year + '年' + parseInt(month,10) + '月';
+    sel.appendChild(opt);
+  });
+}
+
+async function onYmChange() {
+  const val = el('ym-select').value;
+  if(!val) return;
+  const [year, month] = val.split('/');
+  await loadAndRender(cfg.folderId, year, month);
 }
 
 // ============================================================
