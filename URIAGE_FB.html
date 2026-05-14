@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>URIAGE FB</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Bebas+Neue&display=swap');
+
+:root {
+  --bg:#0a0c10; --surface:#111318; --surface2:#181c24; --surface3:#1e2330;
+  --border:#22272f; --border2:#2e3444;
+  --accent:#f0c040; --accent2:#e05050; --accent3:#40c8a0;
+  --text:#e8eaf0; --text2:#7880a0; --text3:#4a5068;
+  --profit-pos:#40c8a0; --profit-neg:#e05050;
+  --rt:#ff6b35; --az:#4a9eff; --au:#00b8a0; --mc:#ff4040;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh;overflow-x:hidden}
+
+/* ===== SETUP SCREEN ===== */
+#setup-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;background:radial-gradient(ellipse at 30% 20%,#1a1f2e 0%,var(--bg) 60%)}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:clamp(48px,9vw,88px);letter-spacing:4px;color:var(--accent);text-shadow:0 0 60px rgba(240,192,64,.25);margin-bottom:4px;line-height:1}
+.logo-sub{font-size:12px;letter-spacing:5px;color:var(--text3);text-transform:uppercase;margin-bottom:48px}
+
+.setup-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px 36px;width:100%;max-width:640px;margin-bottom:24px}
+.setup-card h2{font-size:13px;letter-spacing:3px;color:var(--text2);text-transform:uppercase;margin-bottom:20px}
+
+.field-row{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.field-row label{font-size:11px;letter-spacing:1px;color:var(--text3);text-transform:uppercase}
+.field-row input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:13px;padding:10px 14px;outline:none;transition:border-color .15s}
+.field-row input:focus{border-color:var(--accent)}
+.field-row input::placeholder{color:var(--text3)}
+
+.fee-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fee-item{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.fee-item label{font-size:10px;letter-spacing:1px;color:var(--text3);display:block;margin-bottom:6px}
+.fee-item .fee-row{display:flex;align-items:center;gap:6px}
+.fee-item input{background:transparent;border:none;border-bottom:1px solid var(--border2);color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:18px;font-weight:700;width:60px;padding:2px 4px;outline:none;text-align:right}
+.fee-item span{font-size:13px;color:var(--text2)}
+.fee-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+
+.run-btn{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:4px;background:var(--accent);color:#000;border:none;border-radius:8px;padding:16px 60px;cursor:pointer;transition:all .2s}
+.run-btn:hover{background:#ffd060;transform:translateY(-1px);box-shadow:0 8px 30px rgba(240,192,64,.3)}
+.run-btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+
+.setup-note{font-size:11px;color:var(--text3);text-align:center;line-height:1.8;margin-top:8px}
+.setup-note a{color:var(--text2);text-decoration:none}
+.setup-note a:hover{color:var(--accent)}
+
+/* ===== TOP BAR ===== */
+#dashboard{display:none;min-height:100vh}
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.top-left{display:flex;align-items:center;gap:16px}
+.top-logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:4px;color:var(--accent)}
+.top-date-label{font-size:12px;color:var(--text2)}
+
+.period-btns{display:flex;gap:6px}
+.pbtn{font-size:11px;letter-spacing:.5px;padding:5px 13px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;transition:all .15s;white-space:nowrap}
+.pbtn:hover{border-color:var(--text2);color:var(--text)}
+.pbtn.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
+
+.top-right{display:flex;align-items:center;gap:8px}
+.btn-sm{font-size:11px;padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn-sm:hover{border-color:var(--text2);color:var(--text)}
+.btn-sm.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
+
+/* ===== KPI ===== */
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border)}
+.kpi-card{background:var(--surface);padding:16px 20px;position:relative;overflow:hidden}
+.kpi-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.kpi-card:nth-child(1)::after{background:var(--accent)}
+.kpi-card:nth-child(2)::after{background:var(--accent3)}
+.kpi-card:nth-child(3)::after{background:var(--accent2)}
+.kpi-card:nth-child(4)::after{background:var(--rt)}
+.kpi-card:nth-child(5)::after{background:var(--az)}
+.kpi-card:nth-child(6)::after{background:linear-gradient(90deg,var(--au),var(--mc))}
+.kpi-label{font-size:10px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;margin-bottom:6px}
+.kpi-value{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;line-height:1}
+.kpi-sub{font-size:10px;color:var(--text3);margin-top:3px}
+
+/* ===== TABLE ===== */
+#table-view{padding:20px 24px}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.section-title{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:3px;color:var(--text2)}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap}
+.fbtn{font-size:11px;padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;transition:all .15s}
+.fbtn:hover{border-color:var(--text2);color:var(--text)}
+.fbtn.active{font-weight:700}
+.fbtn[data-f="all"].active{background:var(--accent);color:#000;border-color:var(--accent)}
+.fbtn[data-f="RT"].active{background:var(--rt);color:#fff;border-color:var(--rt)}
+.fbtn[data-f="AZ"].active{background:var(--az);color:#fff;border-color:var(--az)}
+.fbtn[data-f="AU"].active{background:var(--au);color:#fff;border-color:var(--au)}
+.fbtn[data-f="MC"].active{background:var(--mc);color:#fff;border-color:var(--mc)}
+.fbtn[data-f="neg"].active{background:var(--accent2);color:#fff;border-color:var(--accent2)}
+.fbtn[data-f="disc"].active{background:rgba(240,192,64,.2);color:var(--accent);border-color:var(--accent)}
+
+.data-table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th{text-align:left;padding:8px 10px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+.data-table th:hover{color:var(--text2)}
+.data-table th.sort-asc::after{content:' ↑';color:var(--accent)}
+.data-table th.sort-desc::after{content:' ↓';color:var(--accent)}
+.data-table tr.drow{border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+.data-table tr.drow:hover{background:var(--surface2)}
+.data-table tr.drow.neg-row{background:rgba(224,80,80,.04)}
+.data-table tr.drow.neg-row:hover{background:rgba(224,80,80,.09)}
+.data-table td{padding:8px 10px;vertical-align:middle}
+.rank-num{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--text3);width:32px}
+.rank-num.top3{color:var(--accent)}
+.prod-name{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;font-size:13px}
+.badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:3px;margin-left:5px;vertical-align:middle}
+.badge-rt{background:rgba(255,107,53,.2);color:var(--rt)}
+.badge-az{background:rgba(74,158,255,.2);color:var(--az)}
+.badge-au{background:rgba(0,184,160,.2);color:var(--au)}
+.badge-mc{background:rgba(255,64,64,.2);color:var(--mc)}
+.badge-disc{background:rgba(240,192,64,.2);color:var(--accent)}
+.badge-neg{background:rgba(224,80,80,.2);color:var(--accent2)}
+.profit-cell{font-weight:700;font-size:13px;white-space:nowrap}
+.profit-cell.pos{color:var(--profit-pos)}
+.profit-cell.neg{color:var(--profit-neg)}
+.num-cell{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;color:#e8eaf0}
+.multi-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(74,158,255,.15);border:1px solid rgba(74,158,255,.35);border-radius:4px;padding:1px 7px;font-size:10px;color:var(--az);font-weight:700;white-space:nowrap;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
+.bar-wrap{display:flex;align-items:center;gap:6px;min-width:90px}
+.bar-bg{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px}
+.inv-cell{white-space:nowrap;font-size:11px}
+.inv-item{display:inline-block;margin-right:8px}
+.inv-l{color:var(--text3)}
+.inv-v{color:var(--text2);font-weight:600}
+.inv-z{color:var(--accent2)}
+.no-data{text-align:center;padding:48px;color:var(--text3);font-size:13px}
+
+/* ===== MODAL ===== */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:1100px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+.modal-header{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border)}
+.modal-title{font-size:15px;font-weight:700;line-height:1.4;flex:1;padding-right:16px}
+.modal-close{background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:color .15s}
+.modal-close:hover{color:var(--text)}
+.modal-summary{display:flex;gap:0;border-bottom:1px solid var(--border)}
+.modal-kpi{flex:1;padding:14px 20px;border-right:1px solid var(--border)}
+.modal-kpi:last-child{border-right:none}
+.modal-kpi-label{font-size:10px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;margin-bottom:4px}
+.modal-kpi-val{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px}
+.modal-body{overflow-y:auto;padding:16px 24px}
+.detail-table{width:100%;border-collapse:collapse;font-size:12px}
+.detail-table th{text-align:left;padding:7px 10px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap}
+.detail-table td{padding:7px 10px;border-bottom:1px solid rgba(34,39,47,.6);white-space:nowrap;vertical-align:middle}
+.detail-table tr:last-child td{border-bottom:none}
+.detail-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+.modal-disc-note{background:rgba(240,192,64,.07);border:1px solid rgba(240,192,64,.25);border-radius:8px;padding:10px 16px;font-size:12px;color:var(--accent);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+
+/* ===== SLIDE MODE ===== */
+#slide-mode{display:none;position:fixed;inset:0;background:var(--bg);z-index:200;flex-direction:column}
+.slide-top{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--surface)}
+.slide-prog-wrap{display:flex;align-items:center;gap:10px}
+.slide-counter{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px}
+.slide-total{font-size:13px;color:var(--text3)}
+.prog-bar-bg{width:180px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.prog-bar-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
+.slide-nav{display:flex;gap:8px}
+.nav-btn{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;padding:7px 18px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;transition:all .15s}
+.nav-btn:hover{border-color:var(--accent);color:var(--accent)}
+.nav-btn:disabled{opacity:.3;cursor:not-allowed}
+.nav-btn.close{border-color:var(--accent2);color:var(--accent2)}
+.nav-btn.close:hover{background:var(--accent2);color:#fff}
+.slide-content{flex:1;display:flex;align-items:center;justify-content:center;padding:32px;overflow:hidden}
+.slide-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;width:100%;max-width:820px;padding:40px 48px;position:relative;overflow:hidden;animation:slideIn .25s ease}
+@keyframes slideIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
+.slide-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.slide-card.pos::before{background:linear-gradient(90deg,var(--profit-pos),transparent)}
+.slide-card.neg::before{background:linear-gradient(90deg,var(--profit-neg),transparent)}
+.slide-rank{position:absolute;top:32px;right:40px;font-family:'Bebas Neue',sans-serif;font-size:64px;color:var(--surface2);letter-spacing:-2px;line-height:1;user-select:none}
+.slide-badges{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
+.slide-name{font-size:clamp(16px,2.2vw,24px);font-weight:700;line-height:1.4;margin-bottom:6px;padding-right:70px}
+.slide-sku{font-size:11px;color:var(--text3);letter-spacing:1px;margin-bottom:28px;font-family:monospace}
+.slide-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.slide-m{background:var(--surface2);border-radius:10px;padding:14px 16px;border:1px solid var(--border)}
+.slide-m-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:7px}
+.slide-m-val{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;line-height:1}
+.slide-m-val.pos{color:var(--profit-pos)}
+.slide-m-val.neg{color:var(--profit-neg)}
+.slide-m-val.hi{color:var(--accent)}
+.slide-m-sub{font-size:10px;color:var(--text3);margin-top:3px}
+.slide-inv{display:flex;gap:14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 18px;flex-wrap:wrap}
+.slide-inv-item{display:flex;flex-direction:column;align-items:center;min-width:56px}
+.slide-inv-label{font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:3px}
+.slide-inv-val{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--text)}
+.slide-inv-val.zero{color:var(--accent2)}
+.slide-disc{background:rgba(240,192,64,.07);border:1px solid rgba(240,192,64,.25);border-radius:8px;padding:9px 14px;font-size:12px;color:var(--accent);margin-top:14px;display:flex;align-items:center;gap:7px}
+.kbd-hint{text-align:center;padding:9px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);background:var(--surface)}
+
+/* ===== DRIVE CONFIG MODAL ===== */
+.cfg-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:400;display:none;align-items:center;justify-content:center;padding:20px}
+.cfg-modal-overlay.open{display:flex}
+.cfg-modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:560px;padding:32px 36px}
+.cfg-modal h2{font-size:13px;letter-spacing:3px;color:var(--text2);text-transform:uppercase;margin-bottom:20px}
+
+/* STATUS BAR */
+.status-bar{background:var(--surface2);border-bottom:1px solid var(--border);padding:6px 24px;font-size:11px;color:var(--text3);display:flex;align-items:center;gap:8px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--text3)}
+.status-dot.ok{background:var(--profit-pos)}
+.status-dot.err{background:var(--profit-neg)}
+.status-dot.loading{background:var(--accent);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+@media(max-width:700px){
+  .kpi-row{grid-template-columns:repeat(3,1fr)}
+  .slide-metrics{grid-template-columns:repeat(2,1fr)}
+  .slide-card{padding:24px 20px}
+  .top-bar{flex-wrap:wrap;gap:8px}
+  .period-btns{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== SETUP SCREEN ===== -->
+<div id="setup-screen">
+  <div class="logo">URIAGE FB</div>
+  <div class="logo-sub">Sales Feedback Dashboard</div>
+
+  <div class="setup-card">
+    <h2>Google Drive 設定</h2>
+    <div class="field-row">
+      <label>Google Drive フォルダID</label>
+      <input type="text" id="folder-id" placeholder="例: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" />
+    </div>
+    <div class="field-row">
+      <label>Google API Key（公開読み取り専用）</label>
+      <input type="text" id="api-key" placeholder="例: AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" />
+    </div>
+    <p style="font-size:11px;color:var(--text3);margin-top:-8px;line-height:1.7">
+      ※ Google Cloud Console で「Drive API」を有効にしAPIキーを発行。<br>
+      　 フォルダは「リンクを知っている全員が閲覧可能」に設定してください。
+    </p>
+  </div>
+
+  <div class="setup-card">
+    <h2>手数料率</h2>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 18px;display:flex;align-items:center;gap:12px">
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--accent)">10%</span>
+      <span style="font-size:12px;color:var(--text2);line-height:1.6">全モール（楽天/Amazon/AU PAY/メルカリ）共通<br>変更が必要な場合はソースの <code style="color:var(--accent3)">FEE_RATE</code> を編集</span>
+    </div>
+  </div>
+
+  <button class="run-btn" id="connect-btn" onclick="connectDrive()">Drive に接続</button>
+  <p class="setup-note">
+    設定はブラウザに保存されます。次回からこの画面はスキップされます。<br>
+    <a href="#" onclick="showOfflineMode()">▶ ファイルを直接読み込む（ローカルモード）</a>
+  </p>
+</div>
+
+<!-- ===== DASHBOARD ===== -->
+<div id="dashboard">
+  <div class="top-bar">
+    <div class="top-left">
+      <div class="top-logo">URIAGE FB</div>
+      <div class="period-btns">
+        <button class="pbtn active" data-p="yesterday" onclick="setPeriod(this)">昨日</button>
+        <button class="pbtn" data-p="3days" onclick="setPeriod(this)">直近3日</button>
+        <button class="pbtn" data-p="week" onclick="setPeriod(this)">今週</button>
+        <button class="pbtn" data-p="month" onclick="setPeriod(this)">今月</button>
+        <button class="pbtn" data-p="all" onclick="setPeriod(this)">全期間</button>
+      </div>
+      <div class="top-date-label" id="period-label"></div>
+    </div>
+    <div class="top-right">
+      <button class="btn-sm" onclick="refreshData()">↻ 更新</button>
+      <button class="btn-sm primary" onclick="startSlide()">▶ スライド</button>
+      <button class="btn-sm" onclick="openCfgModal()">⚙ 設定</button>
+    </div>
+  </div>
+  <div class="status-bar">
+    <div class="status-dot ok" id="status-dot"></div>
+    <span id="status-text">読み込み完了</span>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-card"><div class="kpi-label">総売上</div><div class="kpi-value" id="k-sales" style="color:var(--accent)">—</div><div class="kpi-sub" id="k-sales-s"></div></div>
+    <div class="kpi-card"><div class="kpi-label">総粗利</div><div class="kpi-value" id="k-profit">—</div><div class="kpi-sub" id="k-profit-s"></div></div>
+    <div class="kpi-card"><div class="kpi-label">粗利マイナス</div><div class="kpi-value" id="k-neg" style="color:var(--accent2)">—</div><div class="kpi-sub" id="k-neg-s"></div></div>
+    <div class="kpi-card"><div class="kpi-label">楽天</div><div class="kpi-value" id="k-rt" style="color:var(--rt)">—</div><div class="kpi-sub" id="k-rt-s"></div></div>
+    <div class="kpi-card"><div class="kpi-label">Amazon</div><div class="kpi-value" id="k-az" style="color:var(--az)">—</div><div class="kpi-sub" id="k-az-s"></div></div>
+    <div class="kpi-card"><div class="kpi-label">AU / メルカリ</div><div class="kpi-value" id="k-other" style="color:var(--au)">—</div><div class="kpi-sub" id="k-other-s"></div></div>
+  </div>
+
+  <div id="table-view">
+    <div class="section-header">
+      <div class="section-title">粗利ランキング（SKU別）</div>
+      <div class="filter-row">
+        <button class="fbtn active" data-f="all" onclick="setFilter(this)">ALL</button>
+        <button class="fbtn" data-f="RT" onclick="setFilter(this)" style="color:var(--rt);border-color:rgba(255,107,53,.4)">楽天</button>
+        <button class="fbtn" data-f="AZ" onclick="setFilter(this)" style="color:var(--az);border-color:rgba(74,158,255,.4)">Amazon</button>
+        <button class="fbtn" data-f="AU" onclick="setFilter(this)" style="color:var(--au);border-color:rgba(0,184,160,.4)">AU PAY</button>
+        <button class="fbtn" data-f="MC" onclick="setFilter(this)" style="color:var(--mc);border-color:rgba(255,64,64,.4)">メルカリ</button>
+        <button class="fbtn" data-f="neg" onclick="setFilter(this)" style="color:var(--accent2);border-color:rgba(224,80,80,.4)">⚠ マイナス</button>
+        <button class="fbtn" data-f="disc" onclick="setFilter(this)" style="color:var(--accent);border-color:rgba(240,192,64,.4)">★ 値引き仕入れ</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="data-table" id="main-table">
+        <thead><tr>
+          <th style="width:36px">#</th>
+          <th onclick="sortBy('name')">商品名</th>
+          <th onclick="sortBy('qty')" class="num-cell">数量</th>
+          <th onclick="sortBy('salesPrice')" class="num-cell">販売単価</th>
+          <th onclick="sortBy('buyPrice')" class="num-cell">仕入単価</th>
+          <th onclick="sortBy('unitProfit')" class="num-cell">単粗利</th>
+          <th onclick="sortBy('totalProfit')" class="num-cell sort-desc">全粗利</th>
+          <th onclick="sortBy('totalSales')" class="num-cell">全売上</th>
+          <th onclick="sortBy('lastBuyDate')" class="num-cell">最終仕入日</th>
+          <th>在庫</th>
+        </tr></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+    <div id="no-data" class="no-data" style="display:none">条件に一致するデータがありません</div>
+  </div>
+</div>
+
+<!-- ===== DETAIL MODAL ===== -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title"></div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-summary" id="modal-summary"></div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ===== SLIDE MODE ===== -->
+<div id="slide-mode">
+  <div class="slide-top">
+    <div class="slide-prog-wrap">
+      <div class="slide-counter"><span id="sl-cur">1</span><span style="font-size:14px;color:var(--text3)"> / </span><span id="sl-total">—</span></div>
+      <div class="prog-bar-bg"><div class="prog-bar-fill" id="sl-prog"></div></div>
+    </div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:4px;color:var(--text3)">URIAGE FB</div>
+    <div class="slide-nav">
+      <button class="nav-btn" id="prev-btn" onclick="slideNav(-1)" disabled>← PREV</button>
+      <button class="nav-btn" id="next-btn" onclick="slideNav(1)">NEXT →</button>
+      <button class="nav-btn close" onclick="closeSlide()">✕</button>
+    </div>
+  </div>
+  <div class="slide-content"><div class="slide-card" id="slide-card"></div></div>
+  <div class="kbd-hint">← → キーで移動　/ ESC で終了</div>
+</div>
+
+<!-- ===== CONFIG MODAL ===== -->
+<div class="cfg-modal-overlay" id="cfg-modal">
+  <div class="cfg-modal">
+    <h2>設定</h2>
+    <div class="field-row"><label>フォルダID</label><input type="text" id="cfg-folder-id"></div>
+    <div class="field-row"><label>API Key</label><input type="text" id="cfg-api-key"></div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="run-btn" style="font-size:15px;padding:12px 32px" onclick="saveCfg()">保存して再接続</button>
+      <button class="btn-sm" style="padding:10px 20px" onclick="closeCfgModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== OFFLINE MODE (hidden dropzones) ===== -->
+<div id="offline-screen" style="display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;background:radial-gradient(ellipse at 30% 20%,#1a1f2e 0%,var(--bg) 60%)">
+  <div class="logo" style="margin-bottom:4px">URIAGE FB</div>
+  <div class="logo-sub">ローカルモード</div>
+
+  <div class="setup-card" style="max-width:800px">
+    <h2>ファイルを読み込む</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px" id="dz-grid">
+      <!-- dropzones injected by JS -->
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px">
+      <label style="font-size:11px;letter-spacing:1px;color:var(--text2);white-space:nowrap">集計日</label>
+      <input type="date" id="offline-date" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:13px;padding:6px 10px;outline:none">
+      <span style="font-size:11px;color:var(--text3)">空白 = 全データ</span>
+    </div>
+    <button class="run-btn" id="offline-run-btn" onclick="runOffline()" disabled>集計スタート</button>
+  </div>
+  <button class="btn-sm" style="margin-top:8px" onclick="backToSetup()">← Drive接続に戻る</button>
+</div>
+
+<script>
+// ============================================================
+// CONFIG & STATE
+// ============================================================
+const MALLS = {
+  RT: { label:'楽天', color:'var(--rt)', badgeClass:'badge-rt', feeKey:'fee-rt' },
+  AZ: { label:'Amazon', color:'var(--az)', badgeClass:'badge-az', feeKey:'fee-az' },
+  AU: { label:'AU PAY', color:'var(--au)', badgeClass:'badge-au', feeKey:'fee-au' },
+  MC: { label:'メルカリ', color:'var(--mc)', badgeClass:'badge-mc', feeKey:'fee-mc' },
+};
+// filename pattern → mall code
+const FILE_PATTERNS = [
+  { pattern:/rakuten|楽天/i, mall:'RT' },
+  { pattern:/amazon|アマゾン/i, mall:'AZ' },
+  { pattern:/au.?pay|aupay/i, mall:'AU' },
+  { pattern:/mercari|メルカリ/i, mall:'MC' },
+];
+const MASTER_PATTERN = /master|マスタ/i;
+
+let cfg = loadCfg();
+let masterMap = new Map();
+let allRows = [];   // raw aggregated rows (all dates)
+let displayData = [];
+let currentFilter = 'all';
+let sortKey = 'totalProfit';
+let sortDir = -1;
+let slideIndex = 0;
+let slideData = [];
+let currentPeriod = 'yesterday';
+let offlineFiles = {};
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  // set yesterday as default
+  const yest = new Date(); yest.setDate(yest.getDate()-1);
+  const yi = el('offline-date');
+  if(yi) yi.value = fmtDateInput(yest);
+
+  buildDropzones();
+
+  if(cfg.folderId && cfg.apiKey) {
+    el('folder-id').value = cfg.folderId;
+    el('api-key').value = cfg.apiKey;
+    connectDrive();
+  }
+});
+
+// ============================================================
+// SETUP / CONFIG
+// ============================================================
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem('uriage_fb_cfg') || '{}'); } catch(e) { return {}; }
+}
+function saveCfgToStorage(c) {
+  try { localStorage.setItem('uriage_fb_cfg', JSON.stringify(c)); } catch(e) {}
+}
+
+async function connectDrive() {
+  const folderId = el('folder-id').value.trim();
+  const apiKey   = el('api-key').value.trim();
+  if(!folderId || !apiKey) { alert('フォルダIDとAPIキーを入力してください'); return; }
+  cfg = { folderId, apiKey };
+  saveCfgToStorage(cfg);
+  setStatus('loading','Drive からファイル一覧を取得中...');
+  showDashboard();
+  await refreshData();
+}
+
+function saveCfg() {
+  el('cfg-folder-id') && (cfg.folderId = el('cfg-folder-id').value.trim());
+  el('cfg-api-key')   && (cfg.apiKey   = el('cfg-api-key').value.trim());
+  saveCfgToStorage(cfg);
+  closeCfgModal();
+  refreshData();
+}
+
+function showDashboard() {
+  el('setup-screen').style.display = 'none';
+  el('offline-screen').style.display = 'none';
+  el('dashboard').style.display = 'block';
+}
+
+function openCfgModal() {
+  el('cfg-folder-id').value = cfg.folderId||'';
+  el('cfg-api-key').value   = cfg.apiKey||'';
+  el('cfg-modal').classList.add('open');
+}
+function closeCfgModal() { el('cfg-modal').classList.remove('open'); }
+
+// ============================================================
+// GOOGLE DRIVE API
+// ============================================================
+async function refreshData() {
+  setStatus('loading','最新ファイルを取得中...');
+  try {
+    const files = await listDriveFiles();
+    if(!files.length) { setStatus('err','Driveにファイルが見つかりません'); return; }
+
+    const masterFile = files.find(f => MASTER_PATTERN.test(f.name));
+    const salesFiles = files.filter(f => !MASTER_PATTERN.test(f.name) && /\.csv$/i.test(f.name));
+
+    if(masterFile) {
+      const buf = await downloadDriveFile(masterFile.id);
+      masterMap = parseMasterXlsx(buf);
+    }
+
+    allRows = [];
+    for(const f of salesFiles) {
+      const mallCode = detectMall(f.name);
+      if(!mallCode) continue;
+      const buf = await downloadDriveFile(f.id);
+      const decoder = new TextDecoder('shift-jis');
+      const text = decoder.decode(buf);
+      const rows = parseCSV(text).map(r => ({ ...r, _mall: mallCode, _file: f.name }));
+      allRows.push(...rows);
+    }
+
+    setStatus('ok', `${files.length}ファイル読み込み完了 — 最終更新 ${now()}`);
+    applyPeriodAndRender();
+  } catch(err) {
+    setStatus('err', 'エラー: ' + err.message);
+    console.error(err);
+  }
+}
+
+async function listDriveFiles() {
+  const url = `https://www.googleapis.com/drive/v3/files?q='${cfg.folderId}'+in+parents+and+trashed=false&fields=files(id,name,modifiedTime)&key=${cfg.apiKey}&pageSize=200`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Drive API エラー: ' + res.status + ' — フォルダIDとAPIキーを確認してください');
+  const data = await res.json();
+  return data.files || [];
+}
+
+async function downloadDriveFile(fileId) {
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${cfg.apiKey}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('ファイルDL失敗: ' + fileId);
+  return await res.arrayBuffer();
+}
+
+function detectMall(filename) {
+  for(const {pattern, mall} of FILE_PATTERNS) {
+    if(pattern.test(filename)) return mall;
+  }
+  return null;
+}
+
+// ============================================================
+// PERIOD SELECTOR
+// ============================================================
+function setPeriod(btn) {
+  document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentPeriod = btn.dataset.p;
+  applyPeriodAndRender();
+}
+
+function getPeriodDates(period) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dow = today.getDay(); // 0=Sun
+  switch(period) {
+    case 'yesterday': {
+      const d = new Date(today); d.setDate(d.getDate()-1);
+      return { from: d, to: d };
+    }
+    case '3days': {
+      // Mon→ show Fri/Sat/Sun; otherwise yesterday + 2 days back
+      const isMonOrTue = dow <= 2;
+      const back = isMonOrTue ? (dow===1?3:4) : 2;
+      const from = new Date(today); from.setDate(from.getDate()-back);
+      const to   = new Date(today); to.setDate(to.getDate()-1);
+      return { from, to };
+    }
+    case 'week': {
+      const mon = new Date(today); mon.setDate(mon.getDate() - (dow===0?6:dow-1));
+      return { from: mon, to: today };
+    }
+    case 'month': {
+      const from = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { from, to: today };
+    }
+    case 'all':
+    default:
+      return null;
+  }
+}
+
+function applyPeriodAndRender() {
+  const range = getPeriodDates(currentPeriod);
+  let filtered = allRows;
+  if(range) {
+    const fromStr = fmtDateInput(range.from);
+    const toStr   = fmtDateInput(range.to);
+    filtered = allRows.filter(r => {
+      const d = String(r['注文日']||'').substring(0,10);
+      return d >= fromStr && d <= toStr;
+    });
+    el('period-label').textContent = fromStr === toStr ? fromStr : `${fromStr} ～ ${toStr}`;
+  } else {
+    el('period-label').textContent = '全期間';
+  }
+  const agg = aggregate(filtered);
+  renderKPIs(agg, filtered.length);
+  displayData = sortRows(filterRows(agg, currentFilter));
+  renderTable(displayData);
+}
+
+// ============================================================
+// MASTER
+// ============================================================
+function parseMasterXlsx(buf) {
+  const wb = XLSX.read(buf, { type:'array' });
+  const ws = wb.Sheets['全商品DB'];
+  if(!ws) throw new Error('全商品DBシートが見つかりません');
+  const data = XLSX.utils.sheet_to_json(ws, { defval:'' });
+  const map = new Map();
+  data.forEach(row => {
+    const v = String(row['-variation']||'').trim();
+    if(!v||v==='0') return;
+    const key = normKey(v);
+    const memo = String(row['MEMO']||'');
+    const m = memo.match(/在庫0→(\d+)/);
+    map.set(key, {
+      name: String(row['商品名']||'').trim(),
+      buyPrice: toNum(row['仕入れ金額']),
+      shipFee:  toNum(row['送料']),
+      rtInv:    toNum(row['楽天在庫数']),
+      azInv:    toNum(row['AZ在庫数']),
+      rslInv:   toNum(row['RSL在庫数']),
+      lastBuyPrice: toNum(row['最終仕入価格']),
+      lastBuyDate:  String(row['最終購入日']||'').replace(/\.0$/,''),
+      isDiscount: memo.includes('在庫0→'),
+      discountOrigPrice: m ? parseInt(m[1],10) : null,
+      ctcitno: String(row['CTCITNO']||'').trim(),
+    });
+  });
+  return map;
+}
+
+function normKey(v) {
+  return String(v).toLowerCase().trim().replace(/\.0$/,'');
+}
+function codeToKey(code) {
+  return String(code).toLowerCase().trim().replace(/^(m-ctc-|m-ctcalc-|m-ctco-|m-ctcoalc-)/,'');
+}
+
+// ============================================================
+// AGGREGATE
+// ============================================================
+function aggregate(rows) {
+  const FEE_RATE = 0.10; // 全モール固定10%
+  const skuMap = new Map();
+  rows.forEach(row => {
+    const code   = String(row['商品コード']||'').trim();
+    const key    = codeToKey(code);
+    const mall   = row._mall;
+    const master = masterMap.get(key)||null;
+    const price  = toNum(row['販売単価(税込)']);
+    const qty    = toNum(row['数量'])||1;
+
+    if(!skuMap.has(key)) {
+      skuMap.set(key, {
+        sku:key, rawCode:code,
+        name:(master&&master.name)||cleanName(String(row['商品名']||'')),
+        master, qty:0, totalSales:0, prices:[], malls:new Set(), rows:[],
+        orderCount:0, multiOrderCount:0,
+      });
+    }
+    const e = skuMap.get(key);
+    e.qty += qty;
+    if(price!==null){ e.totalSales += price*qty; e.prices.push({price,qty}); }
+    e.malls.add(mall);
+    e.rows.push(row);
+    e.orderCount++;
+    if(qty >= 2) e.multiOrderCount++;
+  });
+
+  return Array.from(skuMap.values()).map(e => {
+    const m = e.master;
+    const buyPrice  = m ? (m.buyPrice||0) : null;
+    const shipFee   = m ? (m.shipFee||0)  : null;
+    const totalPriceWeight = e.prices.reduce((s,p)=>s+p.price*p.qty,0);
+    const totalQtyPriced   = e.prices.reduce((s,p)=>s+p.qty,0);
+    const avgSalesPrice    = totalQtyPriced>0 ? totalPriceWeight/totalQtyPriced : null;
+
+    const hasCost = buyPrice!==null && avgSalesPrice!==null;
+    const unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-FEE_RATE)-buyPrice-shipFee) : null;
+    const totalProfit = hasCost ? Math.round(unitProfit*e.qty) : null;
+
+    return {
+      ...e,
+      buyPrice, shipFee, avgSalesPrice, unitProfit, totalProfit,
+      feeRate: FEE_RATE,
+      isDiscount:     m ? m.isDiscount       : false,
+      discountOrigPrice: m ? m.discountOrigPrice : null,
+      lastBuyDate:    m ? m.lastBuyDate       : null,
+      rtInv:  m ? m.rtInv  : null,
+      azInv:  m ? m.azInv  : null,
+      rslInv: m ? m.rslInv : null,
+    };
+  });
+}
+
+function cleanName(n) { return n.replace(/\([^)]*\)\s*$/, '').trim(); }
+
+// ============================================================
+// KPIs
+// ============================================================
+function renderKPIs(agg, totalOrders) {
+  const totalSales  = agg.reduce((s,r)=>s+(r.totalSales||0),0);
+  const totalProfit = agg.reduce((s,r)=>s+(r.totalProfit||0),0);
+  const negItems    = agg.filter(r=>r.totalProfit!==null&&r.totalProfit<0);
+  const negProfit   = negItems.reduce((s,r)=>s+r.totalProfit,0);
+  const rtAgg  = agg.filter(r=>r.malls.has('RT'));
+  const azAgg  = agg.filter(r=>r.malls.has('AZ'));
+  const auAgg  = agg.filter(r=>r.malls.has('AU'));
+  const mcAgg  = agg.filter(r=>r.malls.has('MC'));
+  const rtS  = rtAgg.reduce((s,r)=>s+(r.totalSales||0),0);
+  const azS  = azAgg.reduce((s,r)=>s+(r.totalSales||0),0);
+  const auS  = auAgg.reduce((s,r)=>s+(r.totalSales||0),0);
+  const mcS  = mcAgg.reduce((s,r)=>s+(r.totalSales||0),0);
+
+  setText('k-sales','¥'+fmt(totalSales));
+  setText('k-sales-s',totalOrders+'件 / '+agg.length+' SKU');
+  setText('k-profit','¥'+fmt(totalProfit));
+  el('k-profit').style.color = totalProfit>=0?'var(--profit-pos)':'var(--profit-neg)';
+  setText('k-profit-s','利益率 '+(totalSales>0?(totalProfit/totalSales*100).toFixed(1):'—')+'%');
+  setText('k-neg',negItems.length+' SKU');
+  setText('k-neg-s','損失 ¥'+fmt(negProfit));
+  setText('k-rt',rtAgg.length+' SKU');
+  setText('k-rt-s','¥'+fmt(rtS));
+  setText('k-az',azAgg.length+' SKU');
+  setText('k-az-s','¥'+fmt(azS));
+  setText('k-other',(auAgg.length+mcAgg.length)+' SKU');
+  setText('k-other-s','AU ¥'+fmt(auS)+' / MC ¥'+fmt(mcS));
+}
+
+// ============================================================
+// FILTER & SORT
+// ============================================================
+function setFilter(btn) {
+  currentFilter = btn.dataset.f;
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const agg = aggregate(getFilteredRawRows());
+  displayData = sortRows(filterRows(agg, currentFilter));
+  renderTable(displayData);
+}
+
+function filterRows(agg, f) {
+  if(f==='all') return agg;
+  if(f==='RT'||f==='AZ'||f==='AU'||f==='MC') return agg.filter(r=>r.malls.has(f));
+  if(f==='neg')  return agg.filter(r=>r.totalProfit!==null&&r.totalProfit<0);
+  if(f==='disc') return agg.filter(r=>r.isDiscount);
+  return agg;
+}
+
+function getFilteredRawRows() {
+  const range = getPeriodDates(currentPeriod);
+  if(!range) return allRows;
+  const fromStr = fmtDateInput(range.from);
+  const toStr   = fmtDateInput(range.to);
+  return allRows.filter(r=>{
+    const d = String(r['注文日']||'').substring(0,10);
+    return d>=fromStr && d<=toStr;
+  });
+}
+
+function sortBy(key) {
+  if(sortKey===key) sortDir*=-1; else { sortKey=key; sortDir=-1; }
+  document.querySelectorAll('.data-table th').forEach(th=>{
+    th.classList.remove('sort-asc','sort-desc');
+  });
+  const map={name:1,qty:2,salesPrice:3,buyPrice:4,unitProfit:5,totalProfit:6,totalSales:7,lastBuyDate:8};
+  const idx=map[key];
+  if(idx){ const th=document.querySelectorAll('.data-table th')[idx]; th.classList.add(sortDir===1?'sort-asc':'sort-desc'); }
+  displayData = sortRows(displayData);
+  renderTable(displayData);
+}
+
+function sortRows(data) {
+  return [...data].sort((a,b)=>{
+    let av,bv;
+    switch(sortKey){
+      case 'name': return sortDir*a.name.localeCompare(b.name,'ja');
+      case 'qty': av=a.qty; bv=b.qty; break;
+      case 'salesPrice': av=a.avgSalesPrice??-Infinity; bv=b.avgSalesPrice??-Infinity; break;
+      case 'buyPrice':   av=a.buyPrice??-Infinity;      bv=b.buyPrice??-Infinity;      break;
+      case 'unitProfit': av=a.unitProfit??-Infinity;    bv=b.unitProfit??-Infinity;    break;
+      case 'totalProfit':av=a.totalProfit??-Infinity;   bv=b.totalProfit??-Infinity;   break;
+      case 'totalSales': av=a.totalSales??-Infinity;    bv=b.totalSales??-Infinity;    break;
+      case 'lastBuyDate':return sortDir*(a.lastBuyDate||'').localeCompare(b.lastBuyDate||'');
+      default: av=a.totalProfit??-Infinity; bv=b.totalProfit??-Infinity;
+    }
+    return sortDir*(av-bv);
+  });
+}
+
+// ============================================================
+// TABLE RENDER
+// ============================================================
+function renderTable(data) {
+  const tbody = el('table-body');
+  tbody.innerHTML = '';
+  el('no-data').style.display = data.length?'none':'block';
+  if(!data.length) return;
+  const maxAbs = Math.max(...data.map(r=>Math.abs(r.totalProfit||0)),1);
+  data.forEach((row,i) => {
+    const isNeg = row.totalProfit!==null&&row.totalProfit<0;
+    const tr = document.createElement('tr');
+    tr.className = 'drow'+(isNeg?' neg-row':'');
+    tr.onclick = () => openDetailModal(row, i, data);
+    const srcBadges = [...row.malls].map(s=>`<span class="badge badge-${s.toLowerCase()}">${MALLS[s].label}</span>`).join('');
+    const discBadge = row.isDiscount ? '<span class="badge badge-disc">★値引仕入</span>' : '';
+    const pct = (Math.abs(row.totalProfit||0)/maxAbs*100).toFixed(1);
+    const barColor = isNeg?'var(--profit-neg)':'var(--profit-pos)';
+    const profSign = (v,prefix='') => v===null ? '—' : (v>=0?prefix+'¥':'-¥')+fmt(Math.abs(v));
+    // 複数買いバッジ
+    const multiBadge = row.multiOrderCount > 0
+      ? `<span class="multi-badge">×2以上 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
+    const inv = [['RT',row.rtInv],['AZ',row.azInv],['RSL',row.rslInv]].map(([l,v])=>{
+      const cls = v===0?'inv-z':'inv-v';
+      return `<span class="inv-item"><span class="inv-l">${l} </span><span class="${cls}">${v===null?'—':v}</span></span>`;
+    }).join('');
+    tr.innerHTML = `
+      <td class="rank-num ${i<3?'top3':''}">${i+1}</td>
+      <td><div class="prod-name">${esc(row.name)}${srcBadges}${discBadge}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px;font-family:monospace">${esc(row.rawCode)}</div></td>
+      <td class="num-cell" style="color:#e8eaf0;font-weight:600">${row.qty}</td>
+      <td class="num-cell">¥${row.avgSalesPrice!==null?fmt(row.avgSalesPrice):'—'}</td>
+      <td class="num-cell">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</td>
+      <td class="profit-cell num-cell ${row.unitProfit===null?'':row.unitProfit>=0?'pos':'neg'}">${profSign(row.unitProfit,'+')}</td>
+      <td><div class="bar-wrap">
+          <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+          <span class="profit-cell ${row.totalProfit===null?'':row.totalProfit>=0?'pos':'neg'}" style="font-size:12px;min-width:76px;text-align:right">${profSign(row.totalProfit,'+')}</span>
+          ${multiBadge}
+      </div></td>
+      <td class="num-cell">¥${row.totalSales?fmt(row.totalSales):'—'}</td>
+      <td class="num-cell" style="font-size:11px;color:var(--text2)">${fmtDate(row.lastBuyDate)}</td>
+      <td class="inv-cell">${inv}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ============================================================
+// DETAIL MODAL
+// ============================================================
+function openDetailModal(row, rankIdx, data) {
+  el('modal-title').textContent = row.name + (row.isDiscount ? '　★値引き仕入れ品' : '');
+
+  const profSign = (v,prefix='') => v===null?'—':(v>=0?prefix+'¥':'-¥')+fmt(Math.abs(v));
+
+  el('modal-summary').innerHTML = `
+    <div class="modal-kpi"><div class="modal-kpi-label">数量</div><div class="modal-kpi-val" style="color:var(--accent)">${row.qty}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">単粗利</div>
+      <div class="modal-kpi-val ${row.unitProfit===null?'':row.unitProfit>=0?'pos':'neg'}" style="color:${row.unitProfit!==null&&row.unitProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.unitProfit,'+')}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">全粗利</div>
+      <div class="modal-kpi-val" style="color:${row.totalProfit!==null&&row.totalProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.totalProfit,'+')}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">全売上</div><div class="modal-kpi-val">¥${row.totalSales?fmt(row.totalSales):'—'}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">仕入単価</div><div class="modal-kpi-val">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">手数料率</div><div class="modal-kpi-val">${((row.feeRate||0.1)*100).toFixed(1)}%</div></div>`;
+
+  let bodyHtml = '';
+  if(row.isDiscount && row.discountOrigPrice) {
+    bodyHtml += `<div class="modal-disc-note">★ 値引き仕入れ品 — 通常価格から割引購入（元値 ¥${fmt(row.discountOrigPrice)}）。登録仕入額 ¥${fmt(row.buyPrice)}。</div>`;
+  }
+
+  bodyHtml += `<table class="detail-table">
+    <thead><tr>
+      <th>CTCITNO</th><th>注文日</th><th>処理/出荷ステータス</th><th>商品名</th>
+      <th>商品コード</th><th class="num">販売単価(税込)</th><th class="num">元データ価格</th>
+      <th class="num">数量</th><th class="num">送料</th><th class="num">単粗利</th>
+      <th class="num">全粗利</th><th class="num">全売上</th><th>モール</th>
+    </tr></thead><tbody>`;
+
+  const feeRate = row.feeRate || 0.1;
+  row.rows.forEach(r => {
+    const sp  = toNum(r['販売単価(税込)']);
+    const qty = toNum(r['数量'])||1;
+    const bp  = row.buyPrice;
+    const sf  = row.shipFee;
+    const hasCost = sp!==null && bp!==null;
+    const up  = hasCost ? Math.round(sp*(1-feeRate)-bp-sf) : null;
+    const tp  = hasCost ? up*qty : null;
+    const ts  = sp!==null ? sp*qty : null;
+    const ctc = row.master ? (row.master.ctcitno||'—') : '—';
+    const mall = r._mall;
+    const statusRaw = String(r['処理/出荷日']||'');
+    const status = statusRaw.includes('/') ? statusRaw : (r['処理/出荷ステータス']||statusRaw||'—');
+    const profC = up!==null && up<0 ? 'color:var(--profit-neg)' : up!==null ? 'color:var(--profit-pos)' : '';
+    bodyHtml += `<tr>
+      <td style="color:var(--text3);font-family:monospace;font-size:11px">${esc(ctc)}</td>
+      <td>${String(r['注文日']||'').substring(0,10)}</td>
+      <td style="font-size:11px">${esc(status)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cleanName(String(r['商品名']||'')))}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--text3)">${esc(r['商品コード']||'')}</td>
+      <td class="num">¥${sp!==null?fmt(sp):'—'}</td>
+      <td class="num" style="color:var(--text3)">¥${sp!==null?fmt(sp):'—'}</td>
+      <td class="num">${qty}</td>
+      <td class="num">¥${sf!==null?fmt(sf):'—'}</td>
+      <td class="num" style="${profC}">${up!==null?(up>=0?'+':'')+fmt(up):'—'}</td>
+      <td class="num" style="${profC}">${tp!==null?(tp>=0?'+':'')+fmt(tp):'—'}</td>
+      <td class="num">¥${ts!==null?fmt(ts):'—'}</td>
+      <td><span class="badge badge-${mall.toLowerCase()}">${MALLS[mall].label}</span></td>
+    </tr>`;
+  });
+
+  bodyHtml += '</tbody></table>';
+  el('modal-body').innerHTML = bodyHtml;
+  el('detail-modal').classList.add('open');
+}
+function closeModal() { el('detail-modal').classList.remove('open'); }
+el('detail-modal').addEventListener('click', e => { if(e.target===el('detail-modal')) closeModal(); });
+
+// ============================================================
+// SLIDE MODE
+// ============================================================
+function startSlide() {
+  slideData = [...displayData];
+  if(!slideData.length) { alert('データがありません'); return; }
+  slideIndex = 0;
+  renderSlide();
+  el('slide-mode').style.display = 'flex';
+  el('dashboard').style.display = 'none';
+}
+function openSlideAt(i, data) {
+  slideData = data; slideIndex = i;
+  renderSlide();
+  el('slide-mode').style.display = 'flex';
+  el('dashboard').style.display = 'none';
+}
+function closeSlide() {
+  el('slide-mode').style.display = 'none';
+  el('dashboard').style.display = 'block';
+}
+function slideNav(dir) {
+  slideIndex = Math.max(0, Math.min(slideData.length-1, slideIndex+dir));
+  renderSlide();
+}
+function renderSlide() {
+  const total = slideData.length;
+  const row   = slideData[slideIndex];
+  setText('sl-cur', slideIndex+1);
+  setText('sl-total', total);
+  el('sl-prog').style.width = ((slideIndex+1)/total*100)+'%';
+  el('prev-btn').disabled = slideIndex===0;
+  el('next-btn').disabled = slideIndex===total-1;
+  const isNeg = row.totalProfit!==null&&row.totalProfit<0;
+  const card  = el('slide-card');
+  card.className = 'slide-card '+(isNeg?'neg':'pos');
+  const srcBadges = [...row.malls].map(s=>`<span class="badge ${MALLS[s].badgeClass}" style="font-size:12px;padding:3px 9px">${MALLS[s].label}</span>`).join('');
+  const discBadge = row.isDiscount ? '<span class="badge badge-disc" style="font-size:12px;padding:3px 9px">★ 値引き仕入れ</span>' : '';
+  const negBadge  = isNeg ? '<span class="badge badge-neg" style="font-size:12px;padding:3px 9px">⚠ 粗利マイナス</span>' : '';
+  const profSign = (v,prefix='') => v===null?'—':(v>=0?prefix+'¥':'-¥')+fmt(Math.abs(v));
+  const pctStr = row.totalSales ? (row.totalProfit/row.totalSales*100).toFixed(1)+'%' : '—';
+  const invItems = [['楽天',row.rtInv],['AZ',row.azInv],['RSL',row.rslInv]].map(([l,v])=>
+    `<div class="slide-inv-item"><div class="slide-inv-label">${l}</div><div class="slide-inv-val ${v===0?'zero':''}">${v===null?'—':v}</div></div>`
+  ).join('');
+  const discNote = row.isDiscount && row.discountOrigPrice
+    ? `<div class="slide-disc">★ 値引き仕入れ品 — 元値 ¥${fmt(row.discountOrigPrice)} のところ ¥${fmt(row.buyPrice)} で仕入れ</div>` : '';
+  card.innerHTML = `
+    <div class="slide-rank">${slideIndex+1}</div>
+    <div class="slide-badges">${srcBadges}${discBadge}${negBadge}</div>
+    <div class="slide-name">${esc(row.name)}</div>
+    <div class="slide-sku">${esc(row.rawCode)}</div>
+    <div class="slide-metrics">
+      <div class="slide-m"><div class="slide-m-label">数量</div><div class="slide-m-val hi">${row.qty}</div><div class="slide-m-sub">個販売</div></div>
+      <div class="slide-m"><div class="slide-m-label">単粗利</div>
+        <div class="slide-m-val ${row.unitProfit!==null&&row.unitProfit<0?'neg':'pos'}">${profSign(row.unitProfit,'+')}</div>
+        <div class="slide-m-sub">販 ¥${row.avgSalesPrice!==null?fmt(row.avgSalesPrice):'—'} / 仕 ¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div></div>
+      <div class="slide-m"><div class="slide-m-label">全粗利</div>
+        <div class="slide-m-val ${row.totalProfit!==null&&row.totalProfit<0?'neg':'pos'}">${profSign(row.totalProfit,'+')}</div>
+        <div class="slide-m-sub">利益率 ${pctStr}</div></div>
+      <div class="slide-m"><div class="slide-m-label">全売上</div>
+        <div class="slide-m-val">¥${row.totalSales?fmt(row.totalSales):'—'}</div>
+        <div class="slide-m-sub">最終仕入 ${fmtDate(row.lastBuyDate)}</div></div>
+    </div>
+    <div class="slide-inv">${invItems}</div>
+    ${discNote}`;
+}
+document.addEventListener('keydown', e => {
+  if(el('slide-mode').style.display!=='flex') return;
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') slideNav(1);
+  if(e.key==='ArrowLeft' ||e.key==='ArrowUp')   slideNav(-1);
+  if(e.key==='Escape') closeSlide();
+});
+
+// ============================================================
+// OFFLINE MODE
+// ============================================================
+function showOfflineMode() {
+  el('setup-screen').style.display = 'none';
+  el('offline-screen').style.display = 'flex';
+}
+function backToSetup() {
+  el('offline-screen').style.display = 'none';
+  el('setup-screen').style.display = 'flex';
+}
+
+const DROPZONE_DEFS = [
+  { key:'RT',  label:'楽天 売上',       hint:'rakuten売上_YYYYMMDD.csv', color:'var(--rt)' },
+  { key:'AZ',  label:'Amazon 売上',     hint:'amazon売上_YYYYMMDD.csv',  color:'var(--az)' },
+  { key:'AU',  label:'AU PAY 売上',     hint:'au_pay売上_YYYYMMDD.csv',  color:'var(--au)' },
+  { key:'MC',  label:'メルカリ 売上',   hint:'mercari売上_YYYYMMDD.csv', color:'var(--mc)' },
+  { key:'MAS', label:'商品マスタDB',    hint:'商品マスタDB.xlsx',         color:'var(--accent)' },
+];
+
+function buildDropzones() {
+  const grid = el('dz-grid');
+  if(!grid) return;
+  DROPZONE_DEFS.forEach(d => {
+    const div = document.createElement('div');
+    div.id = 'dz-'+d.key;
+    div.style.cssText = `border:1.5px dashed var(--border);border-radius:10px;padding:20px 14px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2)`;
+    div.innerHTML = `<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:${d.color};margin-bottom:6px;text-transform:uppercase">${d.label}</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:10px">${d.hint}</div>
+      <div id="st-${d.key}" style="font-size:11px;color:var(--text2)">クリックまたはドロップ</div>
+      <input type="file" id="fi-${d.key}" accept="${d.key==='MAS'?'.xlsx,.xls':'.csv'}" style="display:none" onchange="offlineLoad('${d.key}',this)">`;
+    div.onclick = () => el('fi-'+d.key).click();
+    div.addEventListener('dragover', e=>{ e.preventDefault(); div.style.borderColor=d.color; });
+    div.addEventListener('dragleave', ()=>{ div.style.borderColor=offlineFiles[d.key]?d.color:'var(--border)'; });
+    div.addEventListener('drop', e=>{ e.preventDefault(); offlineLoadFile(d.key, e.dataTransfer.files[0]); });
+    grid.appendChild(div);
+  });
+}
+
+function offlineLoad(key, input) { if(input.files[0]) offlineLoadFile(key, input.files[0]); }
+function offlineLoadFile(key, file) {
+  offlineFiles[key] = file;
+  el('st-'+key).textContent = '✓ '+file.name;
+  const def = DROPZONE_DEFS.find(d=>d.key===key);
+  el('dz-'+key).style.borderStyle = 'solid';
+  if(def) el('dz-'+key).style.borderColor = def.color;
+  const hasAny = Object.keys(offlineFiles).some(k=>k!=='MAS');
+  el('offline-run-btn').disabled = !hasAny;
+}
+
+async function runOffline() {
+  setStatus('loading','ファイル読み込み中...');
+  showDashboard();
+  try {
+    if(offlineFiles['MAS']) {
+      const buf = await readFileAsArrayBuffer(offlineFiles['MAS']);
+      masterMap = parseMasterXlsx(buf);
+    }
+    allRows = [];
+    for(const [key, file] of Object.entries(offlineFiles)) {
+      if(key==='MAS') continue;
+      const mallCode = key;
+      const buf  = await readFileAsArrayBuffer(file);
+      const text = new TextDecoder('shift-jis').decode(buf);
+      const rows = parseCSV(text).map(r=>({...r, _mall:mallCode, _file:file.name}));
+      allRows.push(...rows);
+    }
+    // set period to offline date if set
+    const d = el('offline-date').value;
+    if(d) {
+      // find which period button to activate
+      const yest = new Date(); yest.setDate(yest.getDate()-1);
+      if(d === fmtDateInput(yest)) {
+        currentPeriod = 'yesterday';
+        document.querySelectorAll('.pbtn').forEach(b=>{ b.classList.toggle('active', b.dataset.p==='yesterday'); });
+      } else {
+        currentPeriod = 'all';
+        document.querySelectorAll('.pbtn').forEach(b=>{ b.classList.toggle('active', b.dataset.p==='all'); });
+        // override with single date filter
+        const filtered = allRows.filter(r=>String(r['注文日']||'').substring(0,10)===d);
+        const agg = aggregate(filtered);
+        renderKPIs(agg, filtered.length);
+        displayData = sortRows(filterRows(agg, currentFilter));
+        renderTable(displayData);
+        el('period-label').textContent = d;
+        setStatus('ok', '読み込み完了 — '+d);
+        return;
+      }
+    }
+    applyPeriodAndRender();
+    setStatus('ok','読み込み完了');
+  } catch(err) {
+    setStatus('err','エラー: '+err.message);
+    console.error(err);
+  }
+}
+
+function readFileAsArrayBuffer(file) {
+  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsArrayBuffer(file); });
+}
+
+// ============================================================
+// CSV / UTILS
+// ============================================================
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length) return [];
+  const headers = lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
+  return lines.slice(1).map(line=>{
+    const fields=[]; let cur='',inQ=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"') inQ=!inQ;
+      else if(c===','&&!inQ){ fields.push(cur); cur=''; }
+      else cur+=c;
+    }
+    fields.push(cur);
+    const obj={};
+    headers.forEach((h,i)=>{ obj[h]=(fields[i]||'').trim(); });
+    return obj;
+  });
+}
+
+function toNum(v) {
+  if(v===null||v===undefined||v==='') return null;
+  if(typeof v==='number'&&isFinite(v)) return v;
+  const n=Number(String(v).replace(/,/g,'').trim());
+  return isFinite(n)?n:null;
+}
+function fmt(n) { return Math.round(n).toLocaleString('ja-JP'); }
+function fmtDate(v) {
+  if(!v||v==='0') return '—';
+  const s=String(v).replace(/\.0$/,'');
+  if(/^\d{8}$/.test(s)) return s.slice(0,4)+'/'+s.slice(4,6)+'/'+s.slice(6,8);
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  return s;
+}
+function fmtDateInput(d) {
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function now() {
+  const d=new Date();
+  return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function el(id){ return document.getElementById(id); }
+function setText(id,v){ const e=el(id); if(e) e.textContent=v; }
+function setStatus(state, msg) {
+  const dot=el('status-dot'); const txt=el('status-text');
+  if(!dot||!txt) return;
+  dot.className='status-dot'+(state==='ok'?' ok':state==='err'?' err':state==='loading'?' loading':'');
+  txt.textContent=msg;
+}
+</script>
+</body>
+</html>
