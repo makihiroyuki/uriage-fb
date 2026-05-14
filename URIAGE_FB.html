@@ -835,6 +835,16 @@ async function onYmChange() {
   const val = el('ym-select').value;
   if(!val) return;
   const [year, month] = val.split('/');
+  // 過去月は「全期間」表示に切り替え
+  const today = new Date();
+  const cy = String(today.getFullYear());
+  const cm = String(today.getMonth()+1).padStart(2,'0');
+  const isCurrentMonth = (year === cy && month === cm);
+  if(!isCurrentMonth) {
+    currentPeriod = 'all';
+    document.querySelectorAll('.pbtn').forEach(b => b.classList.toggle('active', b.dataset.p === 'all'));
+  }
+  folderCache.clear();
   await loadAndRender(cfg.folderId, year, month);
 }
 
