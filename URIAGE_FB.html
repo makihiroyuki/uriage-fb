@@ -474,6 +474,19 @@ window.addEventListener('DOMContentLoaded', () => {
   if(yi) yi.value = fmtDateInput(yest);
   buildDropzones();
 
+  // URLパラメータ優先（?folder=...&key=...）
+  const params = new URLSearchParams(location.search);
+  const urlFolder = params.get('folder');
+  const urlKey    = params.get('key');
+  if(urlFolder && urlKey) {
+    cfg = { folderId: urlFolder, apiKey: urlKey };
+    saveCfgToStorage(cfg);
+    showLoadingScreen();
+    startLoadingWithDrive();
+    return;
+  }
+
+  // ブラウザ保存済み設定
   if(cfg.folderId && cfg.apiKey) {
     el('folder-id').value = cfg.folderId;
     el('api-key').value = cfg.apiKey;
