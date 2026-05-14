@@ -97,7 +97,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .fbtn[data-f="disc"].active{background:rgba(240,192,64,.2);color:var(--accent);border-color:var(--accent)}
 
 .data-table{width:100%;border-collapse:collapse;font-size:12px}
-.data-table th{text-align:left;padding:8px 10px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+.data-table th{text-align:right;padding:8px 10px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+.data-table th:first-child,.data-table th:nth-child(2),.data-table th:last-child{text-align:left}
 .data-table th:hover{color:var(--text2)}
 .data-table th.sort-asc::after{content:' ↑';color:var(--accent)}
 .data-table th.sort-desc::after{content:' ↓';color:var(--accent)}
@@ -105,7 +106,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .data-table tr.drow:hover{background:var(--surface2)}
 .data-table tr.drow.neg-row{background:rgba(224,80,80,.04)}
 .data-table tr.drow.neg-row:hover{background:rgba(224,80,80,.09)}
-.data-table td{padding:8px 10px;vertical-align:middle}
+.data-table td{padding:8px 10px;vertical-align:middle;text-align:right}
+.data-table td:first-child,.data-table td:nth-child(2),.data-table td:last-child{text-align:left}
 .rank-num{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--text3);width:32px}
 .rank-num.top3{color:var(--accent)}
 .prod-name{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;font-size:13px}
@@ -120,11 +122,14 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .profit-cell.pos{color:var(--profit-pos)}
 .profit-cell.neg{color:var(--profit-neg)}
 .num-cell{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;color:#e8eaf0}
-.multi-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(74,158,255,.15);border:1px solid rgba(74,158,255,.35);border-radius:4px;padding:1px 7px;font-size:10px;color:var(--az);font-weight:700;white-space:nowrap;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
-.bar-wrap{display:flex;align-items:center;gap:6px;min-width:90px}
-.bar-bg{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.multi-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(74,158,255,.12);border:1px solid rgba(74,158,255,.3);border-radius:4px;padding:1px 6px;font-size:9px;color:var(--az);font-weight:700;white-space:nowrap;letter-spacing:.3px}
+.profit-col{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.profit-num-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:90px}
+.bar-row{display:flex;align-items:center;gap:6px;width:100%}
+.bar-bg{width:80px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0}
 .bar-fill{height:100%;border-radius:2px}
-.inv-cell{white-space:nowrap;font-size:11px}
+.profit-rate{font-size:10px;color:var(--text3);white-space:nowrap}
+.inv-cell{white-space:nowrap;font-size:11px;text-align:left}
 .inv-item{display:inline-block;margin-right:8px}
 .inv-l{color:var(--text3)}
 .inv-v{color:var(--text2);font-weight:600}
@@ -304,6 +309,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
       <div class="section-title">粗利ランキング（SKU別）</div>
       <div class="filter-row">
         <button class="fbtn active" data-f="all" onclick="setFilter(this)">ALL</button>
+        <button class="fbtn" data-f="ctc" onclick="setFilter(this)" style="color:var(--accent3);border-color:rgba(64,200,160,.4)">m-ctc のみ</button>
         <button class="fbtn" data-f="RT" onclick="setFilter(this)" style="color:var(--rt);border-color:rgba(255,107,53,.4)">楽天</button>
         <button class="fbtn" data-f="AZ" onclick="setFilter(this)" style="color:var(--az);border-color:rgba(74,158,255,.4)">Amazon</button>
         <button class="fbtn" data-f="AU" onclick="setFilter(this)" style="color:var(--au);border-color:rgba(0,184,160,.4)">AU PAY</button>
@@ -315,16 +321,16 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
     <div style="overflow-x:auto">
       <table class="data-table" id="main-table">
         <thead><tr>
-          <th style="width:36px">#</th>
-          <th onclick="sortBy('name')">商品名</th>
-          <th onclick="sortBy('qty')" class="num-cell">数量</th>
-          <th onclick="sortBy('salesPrice')" class="num-cell">販売単価</th>
-          <th onclick="sortBy('buyPrice')" class="num-cell">仕入単価</th>
-          <th onclick="sortBy('unitProfit')" class="num-cell">単粗利</th>
-          <th onclick="sortBy('totalProfit')" class="num-cell sort-desc">全粗利</th>
-          <th onclick="sortBy('totalSales')" class="num-cell">全売上</th>
-          <th onclick="sortBy('lastBuyDate')" class="num-cell">最終仕入日</th>
-          <th>在庫</th>
+          <th style="width:36px;text-align:left">#</th>
+          <th onclick="sortBy('name')" style="text-align:left">商品名</th>
+          <th onclick="sortBy('qty')">数量</th>
+          <th onclick="sortBy('salesPrice')">販売単価</th>
+          <th onclick="sortBy('buyPrice')">仕入単価</th>
+          <th onclick="sortBy('unitProfit')">単粗利</th>
+          <th onclick="sortBy('totalProfit')" class="sort-desc">全粗利</th>
+          <th onclick="sortBy('totalSales')">全売上</th>
+          <th onclick="sortBy('lastBuyDate')">最終仕入日</th>
+          <th style="text-align:left">在庫</th>
         </tr></thead>
         <tbody id="table-body"></tbody>
       </table>
@@ -859,6 +865,7 @@ function setFilter(btn) {
 
 function filterRows(agg, f) {
   if(f==='all') return agg;
+  if(f==='ctc') return agg.filter(r => /^m-ctc/i.test(r.rawCode));
   if(f==='RT'||f==='AZ'||f==='AU'||f==='MC') return agg.filter(r=>r.malls.has(f));
   if(f==='neg')  return agg.filter(r=>r.totalProfit!==null&&r.totalProfit<0);
   if(f==='disc') return agg.filter(r=>r.isDiscount);
@@ -914,39 +921,72 @@ function renderTable(data) {
   tbody.innerHTML = '';
   el('no-data').style.display = data.length?'none':'block';
   if(!data.length) return;
-  const maxAbs = Math.max(...data.map(r=>Math.abs(r.totalProfit||0)),1);
-  data.forEach((row,i) => {
-    const isNeg = row.totalProfit!==null&&row.totalProfit<0;
+
+  // 粗利率のスケール計算（対数スケールで薄利でも見やすく）
+  const rates = data
+    .map(r => r.totalSales > 0 && r.totalProfit !== null ? r.totalProfit / r.totalSales : null)
+    .filter(v => v !== null && v > 0);
+  const maxRate = rates.length ? Math.max(...rates) : 1;
+  // 最大値を基準に、最小でも5%幅は見えるようにする
+  const scaleRate = (r) => {
+    if(r === null || r <= 0) return 0;
+    const pct = r / maxRate * 100;
+    return Math.max(pct, 3).toFixed(1); // 最低3%幅
+  };
+
+  data.forEach((row, i) => {
+    const isNeg = row.totalProfit !== null && row.totalProfit < 0;
     const tr = document.createElement('tr');
-    tr.className = 'drow'+(isNeg?' neg-row':'');
+    tr.className = 'drow' + (isNeg ? ' neg-row' : '');
     tr.onclick = () => openDetailModal(row, i, data);
-    const srcBadges = [...row.malls].map(s=>`<span class="badge badge-${s.toLowerCase()}">${MALLS[s].label}</span>`).join('');
+
+    const srcBadges = [...row.malls].map(s =>
+      `<span class="badge badge-${s.toLowerCase()}">${MALLS[s].label}</span>`
+    ).join('');
     const discBadge = row.isDiscount ? '<span class="badge badge-disc">★値引仕入</span>' : '';
-    const pct = (Math.abs(row.totalProfit||0)/maxAbs*100).toFixed(1);
-    const barColor = isNeg?'var(--profit-neg)':'var(--profit-pos)';
-    const profSign = (v,prefix='') => v===null ? '—' : (v>=0?prefix+'¥':'-¥')+fmt(Math.abs(v));
+
+    const profSign = (v, prefix='') => v === null ? '—' : (v >= 0 ? prefix + '¥' : '-¥') + fmt(Math.abs(v));
+
+    // 粗利率
+    const profRate = row.totalSales > 0 && row.totalProfit !== null
+      ? (row.totalProfit / row.totalSales * 100) : null;
+    const profRateStr = profRate !== null ? profRate.toFixed(1) + '%' : '—';
+    const barPct = profRate !== null ? scaleRate(profRate / 100) : 0;
+    const barColor = isNeg ? 'var(--profit-neg)' : profRate > 15 ? 'var(--profit-pos)' : profRate > 5 ? '#a0c840' : '#c8a040';
+
     // 複数買いバッジ
     const multiBadge = row.multiOrderCount > 0
       ? `<span class="multi-badge">×2以上 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
-    const inv = [['RT',row.rtInv],['AZ',row.azInv],['RSL',row.rslInv]].map(([l,v])=>{
-      const cls = v===0?'inv-z':'inv-v';
-      return `<span class="inv-item"><span class="inv-l">${l} </span><span class="${cls}">${v===null?'—':v}</span></span>`;
+
+    const inv = [['RT', row.rtInv], ['AZ', row.azInv], ['RSL', row.rslInv]].map(([l, v]) => {
+      const cls = v === 0 ? 'inv-z' : 'inv-v';
+      return `<span class="inv-item"><span class="inv-l">${l} </span><span class="${cls}">${v === null ? '—' : v}</span></span>`;
     }).join('');
+
     tr.innerHTML = `
-      <td class="rank-num ${i<3?'top3':''}">${i+1}</td>
-      <td><div class="prod-name">${esc(row.name)}${srcBadges}${discBadge}</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px;font-family:monospace">${esc(row.rawCode)}</div></td>
-      <td class="num-cell" style="color:#e8eaf0;font-weight:600">${row.qty}</td>
-      <td class="num-cell">¥${row.avgSalesPrice!==null?fmt(row.avgSalesPrice):'—'}</td>
-      <td class="num-cell">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</td>
-      <td class="profit-cell num-cell ${row.unitProfit===null?'':row.unitProfit>=0?'pos':'neg'}">${profSign(row.unitProfit,'+')}</td>
-      <td><div class="bar-wrap">
-          <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
-          <span class="profit-cell ${row.totalProfit===null?'':row.totalProfit>=0?'pos':'neg'}" style="font-size:12px;min-width:76px;text-align:right">${profSign(row.totalProfit,'+')}</span>
+      <td class="rank-num ${i < 3 ? 'top3' : ''}" style="text-align:left">${i + 1}</td>
+      <td style="text-align:left">
+        <div class="prod-name">${esc(row.name)}${srcBadges}${discBadge}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px;font-family:monospace">${esc(row.rawCode)}</div>
+      </td>
+      <td style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#e8eaf0;font-weight:normal;letter-spacing:1px">${row.qty}</td>
+      <td style="color:#e8eaf0;font-variant-numeric:tabular-nums;white-space:nowrap">¥${row.avgSalesPrice !== null ? fmt(row.avgSalesPrice) : '—'}</td>
+      <td style="color:#e8eaf0;font-variant-numeric:tabular-nums;white-space:nowrap">¥${row.buyPrice !== null ? fmt(row.buyPrice) : '—'}</td>
+      <td class="profit-cell ${row.unitProfit === null ? '' : row.unitProfit >= 0 ? 'pos' : 'neg'}" style="white-space:nowrap">${profSign(row.unitProfit, '+')}</td>
+      <td>
+        <div class="profit-col">
           ${multiBadge}
-      </div></td>
-      <td class="num-cell">¥${row.totalSales?fmt(row.totalSales):'—'}</td>
-      <td class="num-cell" style="font-size:11px;color:var(--text2)">${fmtDate(row.lastBuyDate)}</td>
+          <div class="profit-num-wrap">
+            <span class="profit-cell ${row.totalProfit === null ? '' : row.totalProfit >= 0 ? 'pos' : 'neg'}" style="font-size:15px">${profSign(row.totalProfit, '+')}</span>
+            <div class="bar-row">
+              <div class="bar-bg"><div class="bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+              <span class="profit-rate">${profRateStr}</span>
+            </div>
+          </div>
+        </div>
+      </td>
+      <td style="color:#e8eaf0;font-variant-numeric:tabular-nums;white-space:nowrap">¥${row.totalSales ? fmt(row.totalSales) : '—'}</td>
+      <td style="font-size:11px;color:var(--text2);white-space:nowrap">${fmtDate(row.lastBuyDate)}</td>
       <td class="inv-cell">${inv}</td>`;
     tbody.appendChild(tr);
   });
