@@ -19,7 +19,27 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh;overflow-x:hidden}
 
-/* ===== SETUP SCREEN ===== */
+/* ===== LOADING / INTRO SCREEN ===== */
+#loading-screen{position:fixed;inset:0;background:var(--bg);z-index:500;display:none;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:60px;overflow:hidden}
+#loading-screen.active{display:flex}
+.ls-feed{position:absolute;top:0;left:0;right:0;bottom:140px;overflow:hidden;mask-image:linear-gradient(to bottom,transparent 0%,black 18%,black 70%,transparent 100%)}
+.ls-feed-inner{padding:20px 40px;font-family:'Courier New',monospace;font-size:12px;display:flex;flex-direction:column;gap:4px}
+.ls-row{display:grid;grid-template-columns:80px 1fr 70px 100px 110px;gap:0 16px;opacity:0;animation:fadeRow .25s ease forwards;white-space:nowrap;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.ls-row.header-row{color:var(--text3);font-size:10px;letter-spacing:2px;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:2px}
+.ls-row .c-sku{color:var(--text3);font-size:11px;overflow:hidden;text-overflow:ellipsis}
+.ls-row .c-name{color:var(--text2);overflow:hidden;text-overflow:ellipsis}
+.ls-row .c-qty{color:var(--accent);text-align:right;font-weight:700}
+.ls-row .c-profit{text-align:right;font-weight:700}
+.ls-row .c-sales{color:var(--text2);text-align:right}
+.ls-row.pos .c-profit{color:var(--profit-pos)}
+.ls-row.neg .c-profit{color:var(--profit-neg)}
+@keyframes fadeRow{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.ls-bottom{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:20px;width:100%}
+.ls-logo{font-family:'Bebas Neue',sans-serif;font-size:clamp(52px,9vw,92px);letter-spacing:6px;color:var(--accent);line-height:1;text-shadow:0 0 80px rgba(240,192,64,.2)}
+.ls-status{font-size:11px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;min-height:18px}
+.ls-enter-btn{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:5px;background:var(--accent);color:#000;border:none;border-radius:8px;padding:14px 56px;cursor:pointer;transition:all .2s;display:none}
+.ls-enter-btn.show{display:block;animation:fadeRow .4s ease}
+.ls-enter-btn:hover{background:#ffd060;transform:translateY(-2px);box-shadow:0 8px 30px rgba(240,192,64,.35)}
 #setup-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;background:radial-gradient(ellipse at 30% 20%,#1a1f2e 0%,var(--bg) 60%)}
 .logo{font-family:'Bebas Neue',sans-serif;font-size:clamp(48px,9vw,88px);letter-spacing:4px;color:var(--accent);text-shadow:0 0 60px rgba(240,192,64,.25);margin-bottom:4px;line-height:1}
 .logo-sub{font-size:12px;letter-spacing:5px;color:var(--text3);text-transform:uppercase;margin-bottom:48px}
@@ -228,6 +248,18 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 </style>
 </head>
 <body>
+
+<!-- ===== LOADING / INTRO SCREEN ===== -->
+<div id="loading-screen">
+  <div class="ls-feed">
+    <div class="ls-feed-inner" id="ls-feed-inner"></div>
+  </div>
+  <div class="ls-bottom">
+    <div class="ls-logo">URIAGE FB</div>
+    <div class="ls-status" id="ls-status">CONNECTING TO DRIVE...</div>
+    <button class="ls-enter-btn" id="ls-enter-btn" onclick="enterDashboard()">ENTER →</button>
+  </div>
+</div>
 
 <!-- ===== SETUP SCREEN ===== -->
 <div id="setup-screen">
@@ -438,19 +470,94 @@ let offlineFiles = {};
 // INIT
 // ============================================================
 window.addEventListener('DOMContentLoaded', () => {
-  // set yesterday as default
   const yest = new Date(); yest.setDate(yest.getDate()-1);
   const yi = el('offline-date');
   if(yi) yi.value = fmtDateInput(yest);
-
   buildDropzones();
 
   if(cfg.folderId && cfg.apiKey) {
     el('folder-id').value = cfg.folderId;
     el('api-key').value = cfg.apiKey;
-    connectDrive();
+    showLoadingScreen();
+    startLoadingWithDrive();
   }
 });
+
+// ============================================================
+// LOADING SCREEN
+// ============================================================
+function showLoadingScreen() {
+  el('setup-screen').style.display = 'none';
+  el('offline-screen').style.display = 'none';
+  el('dashboard').style.display = 'none';
+  el('loading-screen').classList.add('active');
+}
+
+function enterDashboard() {
+  el('loading-screen').classList.remove('active');
+  el('dashboard').style.display = 'block';
+}
+
+async function startLoadingWithDrive() {
+  const feed = el('ls-feed-inner');
+  const statusEl = el('ls-status');
+
+  // ヘッダー行
+  feed.innerHTML = `<div class="ls-row header-row">
+    <span>SKU</span><span>商品名</span><span style="text-align:right">数量</span>
+    <span style="text-align:right">粗利</span><span style="text-align:right">売上</span>
+  </div>`;
+
+  statusEl.textContent = 'CONNECTING TO DRIVE...';
+
+  try {
+    // データ取得（refreshDataの処理を流用）
+    await refreshData();
+
+    // 今月全期間のデータで集計（粗利昇順 = 下位から表示）
+    const agg = aggregate(allRows).filter(r => /^m-ctc/i.test(r.rawCode));
+    agg.sort((a,b) => (a.totalProfit||0) - (b.totalProfit||0)); // 昇順（下位から）
+
+    statusEl.textContent = agg.length + ' SKUs LOADED — ' + allRows.length + ' ORDERS';
+
+    // 1行ずつジャーっと流す
+    let i = 0;
+    const interval = setInterval(() => {
+      if(i >= agg.length) {
+        clearInterval(interval);
+        el('ls-enter-btn').classList.add('show');
+        statusEl.textContent = 'READY — ENTER TO VIEW DASHBOARD';
+        return;
+      }
+      const row = agg[i];
+      const isNeg = row.totalProfit !== null && row.totalProfit < 0;
+      const profStr = row.totalProfit !== null
+        ? (row.totalProfit >= 0 ? '+¥' : '-¥') + fmt(Math.abs(row.totalProfit))
+        : '—';
+      const salesStr = row.totalSales ? '¥' + fmt(row.totalSales) : '—';
+      const shortName = row.name.length > 28 ? row.name.slice(0,28) + '…' : row.name;
+      const div = document.createElement('div');
+      div.className = 'ls-row ' + (isNeg ? 'neg' : 'pos');
+      div.style.animationDelay = '0ms';
+      div.innerHTML = `
+        <span class="c-sku">${esc(row.sku.slice(0,12))}</span>
+        <span class="c-name">${esc(shortName)}</span>
+        <span class="c-qty">${row.qty}</span>
+        <span class="c-profit">${profStr}</span>
+        <span class="c-sales">${salesStr}</span>`;
+      feed.appendChild(div);
+      // 最新行が見えるようスクロール
+      feed.parentElement.scrollTop = feed.scrollHeight;
+      i++;
+    }, 60); // 60ms間隔でジャーっと
+
+  } catch(err) {
+    statusEl.textContent = 'ERROR: ' + err.message;
+    el('ls-enter-btn').classList.add('show');
+    el('ls-enter-btn').textContent = 'RETRY →';
+    el('ls-enter-btn').onclick = () => { location.reload(); };
+  }
+}
 
 // ============================================================
 // SETUP / CONFIG
@@ -468,9 +575,8 @@ async function connectDrive() {
   if(!folderId || !apiKey) { alert('フォルダIDとAPIキーを入力してください'); return; }
   cfg = { folderId, apiKey };
   saveCfgToStorage(cfg);
-  setStatus('loading','Drive からファイル一覧を取得中...');
-  showDashboard();
-  await refreshData();
+  showLoadingScreen();
+  await startLoadingWithDrive();
 }
 
 function saveCfg() {
@@ -749,6 +855,7 @@ function parseMasterXlsx(buf) {
       isDiscount: memo.includes('在庫0→'),
       discountOrigPrice: m ? parseInt(m[1],10) : null,
       ctcitno: String(row['CTCITNO']||'').trim(),
+      onSale: String(row['値引中']||'').trim() !== '',
     });
   });
   return map;
@@ -801,8 +908,11 @@ function aggregate(rows) {
     const avgSalesPrice    = totalQtyPriced>0 ? totalPriceWeight/totalQtyPriced : null;
 
     const hasCost = buyPrice!==null && avgSalesPrice!==null;
-    const unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-FEE_RATE)-buyPrice-shipFee) : null;
-    const totalProfit = hasCost ? Math.round(unitProfit*e.qty) : null;
+    // 単粗利 = 販売単価×0.9 - 仕入れ金額（送料は含めない）
+    const unitProfitBeforeShip = hasCost ? avgSalesPrice*(1-FEE_RATE)-buyPrice : null;
+    // 全粗利 = 単粗利×数量 - 送料1回分（まとめ買いでも送料は1回）
+    const unitProfit  = hasCost ? Math.round(unitProfitBeforeShip - shipFee) : null;
+    const totalProfit = hasCost ? Math.round(unitProfitBeforeShip * e.qty - shipFee) : null;
 
     return {
       ...e,
@@ -810,6 +920,7 @@ function aggregate(rows) {
       feeRate: FEE_RATE,
       isDiscount:     m ? m.isDiscount       : false,
       discountOrigPrice: m ? m.discountOrigPrice : null,
+      onSale:         m ? m.onSale           : false,
       lastBuyDate:    m ? m.lastBuyDate       : null,
       rtInv:  m ? m.rtInv  : null,
       azInv:  m ? m.azInv  : null,
@@ -945,6 +1056,7 @@ function renderTable(data) {
       `<span class="badge badge-${s.toLowerCase()}">${MALLS[s].label}</span>`
     ).join('');
     const discBadge = row.isDiscount ? '<span class="badge badge-disc">★値引仕入</span>' : '';
+    const nameColor = row.onSale ? 'color:var(--accent)' : '';
 
     const profSign = (v, prefix='') => v === null ? '—' : (v >= 0 ? prefix + '¥' : '-¥') + fmt(Math.abs(v));
 
@@ -967,7 +1079,7 @@ function renderTable(data) {
     tr.innerHTML = `
       <td class="rank-num ${i < 3 ? 'top3' : ''}" style="text-align:left">${i + 1}</td>
       <td style="text-align:left">
-        <div class="prod-name">${esc(row.name)}${srcBadges}${discBadge}</div>
+        <div class="prod-name" style="${nameColor}">${esc(row.name)}${srcBadges}${discBadge}</div>
         <div style="font-size:10px;color:var(--text3);margin-top:2px;font-family:monospace">${esc(row.rawCode)}</div>
       </td>
       <td style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#e8eaf0;font-weight:normal;letter-spacing:1px">${row.qty}</td>
@@ -1031,8 +1143,10 @@ function openDetailModal(row, rankIdx, data) {
     const bp  = row.buyPrice;
     const sf  = row.shipFee;
     const hasCost = sp!==null && bp!==null;
+    // 単粗利 = 販売単価×0.9 - 仕入れ - 送料1回
     const up  = hasCost ? Math.round(sp*(1-feeRate)-bp-sf) : null;
-    const tp  = hasCost ? up*qty : null;
+    // 全粗利 = (販売単価×0.9 - 仕入れ)×数量 - 送料1回
+    const tp  = hasCost ? Math.round((sp*(1-feeRate)-bp)*qty - sf) : null;
     const ts  = sp!==null ? sp*qty : null;
     const ctc = row.master ? (row.master.ctcitno||'—') : '—';
     const mall = r._mall;
