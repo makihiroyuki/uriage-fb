@@ -934,7 +934,7 @@ function parseMasterXlsx(buf) {
       discountOrigPrice: m ? parseInt(m[1],10) : null,
       ctcitno: String(row['CTCITNO']||'').trim(),
       onSale: String(row['値引中']||'').trim() !== '',
-      asin: String(row['ASIN']||'').trim(),
+      asin: (()=>{ const v=String(row['商品ID']||'').trim(); return (v&&v!=='なし')?v:''; })(),
     });
   });
   return map;
