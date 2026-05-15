@@ -887,11 +887,11 @@ function getPeriodDates(period) {
 
 function applyPeriodAndRender() {
   const range = getPeriodDates(currentPeriod);
-  let filtered = allRows;
+  let periodRows = allRows;
   if(range) {
     const fromStr = fmtDateInput(range.from);
     const toStr   = fmtDateInput(range.to);
-    filtered = allRows.filter(r => {
+    periodRows = allRows.filter(r => {
       const d = String(r['注文日']||'').substring(0,10);
       return d >= fromStr && d <= toStr;
     });
@@ -899,9 +899,19 @@ function applyPeriodAndRender() {
   } else {
     el('period-label').textContent = '全期間';
   }
-  const agg = aggregate(filtered);
-  renderKPIs(agg, filtered.length);
-  displayData = sortRows(filterRows(agg, currentFilter));
+
+  // モールフィルターは生データを先に絞る
+  const mallCodes = ['RT','AZ','AU','MC'];
+  const filteredRaw = mallCodes.includes(currentFilter)
+    ? periodRows.filter(r => r._mall === currentFilter)
+    : periodRows;
+
+  const agg = aggregate(filteredRaw);
+  const filtered = (currentFilter==='neg'||currentFilter==='disc'||currentFilter==='ctc')
+    ? filterRows(agg, currentFilter) : agg;
+
+  renderKPIs(filtered, filteredRaw.length);
+  displayData = sortRows(filtered);
   renderTable(displayData);
 }
 
@@ -1056,10 +1066,21 @@ function setFilter(btn) {
   currentFilter = btn.dataset.f;
   document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  const agg = aggregate(getFilteredRawRows());
-  const filtered = filterRows(agg, currentFilter);
+
+  const rawRows = getFilteredRawRows();
+  // モールフィルターの場合は生データ先に絞る
+  const mallCodes = ['RT','AZ','AU','MC'];
+  const filteredRaw = mallCodes.includes(currentFilter)
+    ? rawRows.filter(r => r._mall === currentFilter)
+    : rawRows;
+
+  const agg = aggregate(filteredRaw);
+  // neg/disc/ctcはSKU単位のフィルター
+  const filtered = (currentFilter==='neg'||currentFilter==='disc'||currentFilter==='ctc')
+    ? filterRows(agg, currentFilter) : agg;
+
   displayData = sortRows(filtered);
-  renderKPIs(filtered, filtered.reduce((s,r)=>s+r.orderCount,0));
+  renderKPIs(filtered, filteredRaw.length);
   renderTable(displayData);
 }
 
