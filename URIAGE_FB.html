@@ -375,31 +375,29 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 <div class="modal-overlay" id="detail-modal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title" id="modal-title"></div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div style="display:flex;flex-direction:column;gap:6px;flex:1;padding-right:16px">
+        <div class="modal-title" id="modal-title"></div>
+        <div style="display:flex;align-items:center;gap:10px" id="modal-badges"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div id="modal-rank-badge" style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:2px;color:var(--text3)"></div>
+          <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div id="modal-slide-nav" style="display:none;align-items:center;gap:6px">
+          <button class="nav-btn" id="modal-prev-btn" onclick="modalSlideNav(-1)" style="font-size:12px;padding:5px 14px" disabled>←</button>
+          <span id="modal-slide-counter" style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--text2)"></span>
+          <button class="nav-btn" id="modal-next-btn" onclick="modalSlideNav(1)" style="font-size:12px;padding:5px 14px">→</button>
+        </div>
+      </div>
     </div>
     <div class="modal-summary" id="modal-summary"></div>
     <div class="modal-body" id="modal-body"></div>
   </div>
 </div>
 
-<!-- ===== SLIDE MODE ===== -->
-<div id="slide-mode">
-  <div class="slide-top">
-    <div class="slide-prog-wrap">
-      <div class="slide-counter"><span id="sl-cur">1</span><span style="font-size:14px;color:var(--text3)"> / </span><span id="sl-total">—</span></div>
-      <div class="prog-bar-bg"><div class="prog-bar-fill" id="sl-prog"></div></div>
-    </div>
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:4px;color:var(--text3)">URIAGE FB</div>
-    <div class="slide-nav">
-      <button class="nav-btn" id="prev-btn" onclick="slideNav(-1)" disabled>← PREV</button>
-      <button class="nav-btn" id="next-btn" onclick="slideNav(1)">NEXT →</button>
-      <button class="nav-btn close" onclick="closeSlide()">✕</button>
-    </div>
-  </div>
-  <div class="slide-content"><div class="slide-card" id="slide-card"></div></div>
-  <div class="kbd-hint">← → キーで移動　/ ESC で終了</div>
-</div>
+<!-- ===== SLIDE MODE (旧) 廃止 → モーダルをスライドとして使用 ===== -->
+<div id="slide-mode" style="display:none"></div>
 
 <!-- ===== CONFIG MODAL ===== -->
 <div class="cfg-modal-overlay" id="cfg-modal">
@@ -1194,28 +1192,100 @@ function renderTable(data) {
 }
 
 // ============================================================
-// DETAIL MODAL
+// DETAIL MODAL（スライドとしても使用）
 // ============================================================
-function openDetailModal(row, rankIdx, data) {
-  el('modal-title').textContent = row.name + (row.isDiscount ? '　★値引き仕入れ品' : '');
+let modalData = [];
+let modalIndex = 0;
+let isSlideMode = false;
 
+// モールコードの略称（MS = メルカリ）
+const MALL_SHORT = { RT:'RT', AZ:'AZ', AU:'AU', MC:'MS' };
+
+function openDetailModal(row, rankIdx, data) {
+  modalData = data;
+  modalIndex = rankIdx;
+  isSlideMode = false;
+  renderModal();
+  el('detail-modal').classList.add('open');
+}
+
+function startSlide() {
+  modalData = [...displayData];
+  if(!modalData.length) { alert('データがありません'); return; }
+  modalIndex = 0;
+  isSlideMode = true;
+  renderModal();
+  el('detail-modal').classList.add('open');
+}
+
+function closeModal() {
+  el('detail-modal').classList.remove('open');
+  isSlideMode = false;
+}
+
+function modalSlideNav(dir) {
+  modalIndex = Math.max(0, Math.min(modalData.length-1, modalIndex+dir));
+  renderModal();
+}
+
+function renderModal() {
+  const row = modalData[modalIndex];
   const profSign = (v,prefix='') => v===null?'—':(v>=0?prefix+'¥':'-¥')+fmt(Math.abs(v));
 
+  // タイトル・色
+  const nameColor = row.onSale ? 'color:var(--accent)' : '';
+  const titleEl = el('modal-title');
+  titleEl.style.cssText = nameColor;
+  titleEl.textContent = row.name;
+
+  // バッジ行（複数買い・値引き・マイナス）
+  const srcBadges = [...row.malls].map(s =>
+    `<span class="badge badge-${s.toLowerCase()}" style="font-size:11px;padding:3px 8px">${MALLS[s].label}</span>`
+  ).join('');
+  const discBadge = row.isDiscount
+    ? `<span class="badge badge-disc" style="font-size:11px;padding:3px 8px">★ 値引き仕入れ品</span>` : '';
+  const multiBadge = row.multiOrderCount > 0
+    ? `<span class="multi-badge" style="font-size:11px;padding:3px 8px">×2以上 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
+  const negBadge = row.totalProfit!==null&&row.totalProfit<0
+    ? `<span class="badge badge-neg" style="font-size:11px;padding:3px 8px">⚠ 粗利マイナス</span>` : '';
+  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge;
+
+  // ランキング位置（モール別）
+  const rankBadges = [...row.malls].map(mall => {
+    const short = MALL_SHORT[mall] || mall;
+    const mallData = modalData.filter(r => r.malls.has(mall));
+    const pos = mallData.findIndex(r => r.sku === row.sku);
+    return pos >= 0 ? `${short} ${pos+1}/${mallData.length}` : '';
+  }).filter(Boolean).join('　');
+  el('modal-rank-badge').textContent = rankBadges;
+
+  // スライドナビ
+  const navEl = el('modal-slide-nav');
+  if(isSlideMode) {
+    navEl.style.display = 'flex';
+    el('modal-prev-btn').disabled = modalIndex === 0;
+    el('modal-next-btn').disabled = modalIndex === modalData.length - 1;
+    el('modal-slide-counter').textContent = `${modalIndex+1} / ${modalData.length}`;
+  } else {
+    navEl.style.display = 'none';
+  }
+
+  // KPIサマリー
   el('modal-summary').innerHTML = `
     <div class="modal-kpi"><div class="modal-kpi-label">数量</div><div class="modal-kpi-val" style="color:var(--accent)">${row.qty}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">単粗利</div>
-      <div class="modal-kpi-val ${row.unitProfit===null?'':row.unitProfit>=0?'pos':'neg'}" style="color:${row.unitProfit!==null&&row.unitProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.unitProfit,'+')}</div></div>
+      <div class="modal-kpi-val" style="color:${row.unitProfit!==null&&row.unitProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.unitProfit,'+')}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">全粗利</div>
       <div class="modal-kpi-val" style="color:${row.totalProfit!==null&&row.totalProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.totalProfit,'+')}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">全売上</div><div class="modal-kpi-val">¥${row.totalSales?fmt(row.totalSales):'—'}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">仕入単価</div><div class="modal-kpi-val">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">手数料率</div><div class="modal-kpi-val">${((row.feeRate||0.1)*100).toFixed(1)}%</div></div>`;
 
+  // 明細
   let bodyHtml = '';
   if(row.isDiscount && row.discountOrigPrice) {
     bodyHtml += `<div class="modal-disc-note">★ 値引き仕入れ品 — 通常価格から割引購入（元値 ¥${fmt(row.discountOrigPrice)}）。登録仕入額 ¥${fmt(row.buyPrice)}。</div>`;
   }
-
   bodyHtml += `<table class="detail-table">
     <thead><tr>
       <th>CTCITNO</th><th>注文日</th><th>処理/出荷ステータス</th><th>商品名</th>
@@ -1231,17 +1301,17 @@ function openDetailModal(row, rankIdx, data) {
     const bp  = row.buyPrice;
     const sf  = row.shipFee;
     const hasCost = sp!==null && bp!==null;
-    // 単粗利 = 販売単価×0.9 - 仕入れ - 送料1回
     const up  = hasCost ? Math.round(sp*(1-feeRate)-bp-sf) : null;
-    // 全粗利 = (販売単価×0.9 - 仕入れ)×数量 - 送料1回
     const tp  = hasCost ? Math.round((sp*(1-feeRate)-bp)*qty - sf) : null;
     const ts  = sp!==null ? sp*qty : null;
     const ctc = row.master ? (row.master.ctcitno||'—') : '—';
     const mall = r._mall;
     const statusRaw = String(r['処理/出荷日']||'');
-    const status = statusRaw.includes('/') ? statusRaw : (r['処理/出荷ステータス']||statusRaw||'—');
+    const status = statusRaw || (r['処理/出荷ステータス']||'—');
     const profC = up!==null && up<0 ? 'color:var(--profit-neg)' : up!==null ? 'color:var(--profit-pos)' : '';
-    bodyHtml += `<tr>
+    const isCancelled = status.includes('キャンセル');
+    const rowStyle = isCancelled ? 'opacity:0.5;text-decoration:line-through' : '';
+    bodyHtml += `<tr style="${rowStyle}">
       <td style="color:var(--text3);font-family:monospace;font-size:11px">${esc(ctc)}</td>
       <td>${String(r['注文日']||'').substring(0,10)}</td>
       <td style="font-size:11px">${esc(status)}</td>
@@ -1257,85 +1327,19 @@ function openDetailModal(row, rankIdx, data) {
       <td><span class="badge badge-${mall.toLowerCase()}">${MALLS[mall].label}</span></td>
     </tr>`;
   });
-
   bodyHtml += '</tbody></table>';
   el('modal-body').innerHTML = bodyHtml;
-  el('detail-modal').classList.add('open');
 }
-function closeModal() { el('detail-modal').classList.remove('open'); }
+
 el('detail-modal').addEventListener('click', e => { if(e.target===el('detail-modal')) closeModal(); });
 
-// ============================================================
-// SLIDE MODE
-// ============================================================
-function startSlide() {
-  slideData = [...displayData];
-  if(!slideData.length) { alert('データがありません'); return; }
-  slideIndex = 0;
-  renderSlide();
-  el('slide-mode').style.display = 'flex';
-  el('dashboard').style.display = 'none';
-}
-function openSlideAt(i, data) {
-  slideData = data; slideIndex = i;
-  renderSlide();
-  el('slide-mode').style.display = 'flex';
-  el('dashboard').style.display = 'none';
-}
-function closeSlide() {
-  el('slide-mode').style.display = 'none';
-  el('dashboard').style.display = 'block';
-}
-function slideNav(dir) {
-  slideIndex = Math.max(0, Math.min(slideData.length-1, slideIndex+dir));
-  renderSlide();
-}
-function renderSlide() {
-  const total = slideData.length;
-  const row   = slideData[slideIndex];
-  setText('sl-cur', slideIndex+1);
-  setText('sl-total', total);
-  el('sl-prog').style.width = ((slideIndex+1)/total*100)+'%';
-  el('prev-btn').disabled = slideIndex===0;
-  el('next-btn').disabled = slideIndex===total-1;
-  const isNeg = row.totalProfit!==null&&row.totalProfit<0;
-  const card  = el('slide-card');
-  card.className = 'slide-card '+(isNeg?'neg':'pos');
-  const srcBadges = [...row.malls].map(s=>`<span class="badge ${MALLS[s].badgeClass}" style="font-size:12px;padding:3px 9px">${MALLS[s].label}</span>`).join('');
-  const discBadge = row.isDiscount ? '<span class="badge badge-disc" style="font-size:12px;padding:3px 9px">★ 値引き仕入れ</span>' : '';
-  const negBadge  = isNeg ? '<span class="badge badge-neg" style="font-size:12px;padding:3px 9px">⚠ 粗利マイナス</span>' : '';
-  const profSign = (v,prefix='') => v===null?'—':(v>=0?prefix+'¥':'-¥')+fmt(Math.abs(v));
-  const pctStr = row.totalSales ? (row.totalProfit/row.totalSales*100).toFixed(1)+'%' : '—';
-  const invItems = [['楽天',row.rtInv],['AZ',row.azInv],['RSL',row.rslInv]].map(([l,v])=>
-    `<div class="slide-inv-item"><div class="slide-inv-label">${l}</div><div class="slide-inv-val ${v===0?'zero':''}">${v===null?'—':v}</div></div>`
-  ).join('');
-  const discNote = row.isDiscount && row.discountOrigPrice
-    ? `<div class="slide-disc">★ 値引き仕入れ品 — 元値 ¥${fmt(row.discountOrigPrice)} のところ ¥${fmt(row.buyPrice)} で仕入れ</div>` : '';
-  card.innerHTML = `
-    <div class="slide-rank">${slideIndex+1}</div>
-    <div class="slide-badges">${srcBadges}${discBadge}${negBadge}</div>
-    <div class="slide-name">${esc(row.name)}</div>
-    <div class="slide-sku">${esc(row.rawCode)}</div>
-    <div class="slide-metrics">
-      <div class="slide-m"><div class="slide-m-label">数量</div><div class="slide-m-val hi">${row.qty}</div><div class="slide-m-sub">個販売</div></div>
-      <div class="slide-m"><div class="slide-m-label">単粗利</div>
-        <div class="slide-m-val ${row.unitProfit!==null&&row.unitProfit<0?'neg':'pos'}">${profSign(row.unitProfit,'+')}</div>
-        <div class="slide-m-sub">販 ¥${row.avgSalesPrice!==null?fmt(row.avgSalesPrice):'—'} / 仕 ¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div></div>
-      <div class="slide-m"><div class="slide-m-label">全粗利</div>
-        <div class="slide-m-val ${row.totalProfit!==null&&row.totalProfit<0?'neg':'pos'}">${profSign(row.totalProfit,'+')}</div>
-        <div class="slide-m-sub">利益率 ${pctStr}</div></div>
-      <div class="slide-m"><div class="slide-m-label">全売上</div>
-        <div class="slide-m-val">¥${row.totalSales?fmt(row.totalSales):'—'}</div>
-        <div class="slide-m-sub">最終仕入 ${fmtDate(row.lastBuyDate)}</div></div>
-    </div>
-    <div class="slide-inv">${invItems}</div>
-    ${discNote}`;
-}
+// キーボード操作（スライドモード時）
 document.addEventListener('keydown', e => {
-  if(el('slide-mode').style.display!=='flex') return;
-  if(e.key==='ArrowRight'||e.key==='ArrowDown') slideNav(1);
-  if(e.key==='ArrowLeft' ||e.key==='ArrowUp')   slideNav(-1);
-  if(e.key==='Escape') closeSlide();
+  if(!el('detail-modal').classList.contains('open')) return;
+  if(!isSlideMode) return;
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') modalSlideNav(1);
+  if(e.key==='ArrowLeft' ||e.key==='ArrowUp')   modalSlideNav(-1);
+  if(e.key==='Escape') closeModal();
 });
 
 // ============================================================
