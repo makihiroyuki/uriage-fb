@@ -967,16 +967,21 @@ function aggregate(rows) {
         sku:key, rawCode:code,
         name:(master&&master.name)||cleanName(String(row['商品名']||'')),
         master, qty:0, totalSales:0, prices:[], malls:new Set(), rows:[],
-        orderCount:0, multiOrderCount:0,
+        orderCount:0, multiOrderCount:0, cancelCount:0,
       });
     }
     const e = skuMap.get(key);
-    e.qty += qty;
-    if(price!==null){ e.totalSales += price*qty; e.prices.push({price,qty}); }
+    const status = String(row['処理/出荷ステータス']||'');
+    const isCancelled = status.includes('キャンセル');
+    if(!isCancelled) {
+      e.qty += qty;
+      if(price!==null){ e.totalSales += price*qty; e.prices.push({price,qty}); }
+    }
     e.malls.add(mall);
     e.rows.push(row);
     e.orderCount++;
     if(qty >= 2) e.multiOrderCount++;
+    if(isCancelled) e.cancelCount++;
   });
 
   return Array.from(skuMap.values()).map(e => {
@@ -1005,6 +1010,8 @@ function aggregate(rows) {
       rtInv:  m ? m.rtInv  : null,
       azInv:  m ? m.azInv  : null,
       rslInv: m ? m.rslInv : null,
+      hasCancel: e.cancelCount > 0,
+      cancelCount: e.cancelCount,
     };
   });
 }
@@ -1136,7 +1143,8 @@ function renderTable(data) {
       `<span class="badge badge-${s.toLowerCase()}">${MALLS[s].label}</span>`
     ).join('');
     const discBadge = row.isDiscount ? '<span class="badge badge-disc">★値引仕入</span>' : '';
-    const nameColor = row.onSale ? 'color:var(--accent)' : '';
+    const nameColor = row.hasCancel ? 'color:var(--accent2)' : row.onSale ? 'color:var(--accent)' : '';
+    const cancelBadge = row.hasCancel ? `<span class="badge badge-neg">✕キャンセル ${row.cancelCount}件</span>` : '';
 
     const profSign = (v, prefix='') => v === null ? '—' : (v >= 0 ? prefix + '¥' : '-¥') + fmt(Math.abs(v));
 
@@ -1159,7 +1167,7 @@ function renderTable(data) {
     tr.innerHTML = `
       <td class="rank-num ${i < 3 ? 'top3' : ''}" style="text-align:left">${i + 1}</td>
       <td style="text-align:left">
-        <div class="prod-name" style="${nameColor}">${esc(row.name)}${srcBadges}${discBadge}</div>
+        <div class="prod-name" style="${nameColor}">${esc(row.name)}${srcBadges}${discBadge}${cancelBadge}</div>
         <div style="font-size:10px;color:var(--text3);margin-top:2px;font-family:monospace">${esc(row.rawCode)}</div>
       </td>
       <td style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#e8eaf0;font-weight:normal;letter-spacing:1px">${row.qty}</td>
