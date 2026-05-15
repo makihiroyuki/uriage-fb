@@ -1057,7 +1057,9 @@ function setFilter(btn) {
   document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   const agg = aggregate(getFilteredRawRows());
-  displayData = sortRows(filterRows(agg, currentFilter));
+  const filtered = filterRows(agg, currentFilter);
+  displayData = sortRows(filtered);
+  renderKPIs(filtered, filtered.reduce((s,r)=>s+r.orderCount,0));
   renderTable(displayData);
 }
 
