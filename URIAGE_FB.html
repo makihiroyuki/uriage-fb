@@ -319,7 +319,6 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
       <select id="ym-select" onchange="onYmChange()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:12px;padding:5px 10px;outline:none;cursor:pointer">
       </select>
       <button class="btn-sm" onclick="refreshData()">↻ 更新</button>
-      <button class="btn-sm primary" onclick="startSlide()">▶ スライド</button>
       <button class="btn-sm" onclick="openCfgModal()">⚙ 設定</button>
     </div>
   </div>
@@ -1137,7 +1136,13 @@ function renderTable(data) {
     const isNeg = row.totalProfit !== null && row.totalProfit < 0;
     const tr = document.createElement('tr');
     tr.className = 'drow' + (isNeg ? ' neg-row' : '');
-    tr.onclick = () => openDetailModal(row, i, data);
+    tr.onclick = () => {
+      modalData = displayData;
+      modalIndex = i;
+      isSlideMode = true;
+      renderModal();
+      el('detail-modal').classList.add('open');
+    };
 
     const srcBadges = [...row.malls].map(s =>
       `<span class="badge badge-${s.toLowerCase()}">${MALLS[s].label}</span>`
