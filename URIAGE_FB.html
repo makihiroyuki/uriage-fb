@@ -971,7 +971,7 @@ function aggregate(rows) {
       });
     }
     const e = skuMap.get(key);
-    const status = String(row['処理/出荷ステータス']||'');
+    const status = String(row['処理/出荷日']||row['処理/出荷ステータス']||'');
     const isCancelled = status.includes('キャンセル');
     if(!isCancelled) {
       e.qty += qty;
