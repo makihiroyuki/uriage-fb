@@ -153,7 +153,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .inv-cell{white-space:nowrap;font-size:13px;text-align:left}
 .inv-item{display:inline-block;margin-right:8px}
 .inv-l{color:var(--text3)}
-.inv-v{color:var(--text2);font-weight:600}
+.inv-v{color:#ffffff;font-weight:600}
 .inv-z{color:var(--accent2)}
 .no-data{text-align:center;padding:48px;color:var(--text2);font-size:15px}
 
@@ -934,6 +934,7 @@ function parseMasterXlsx(buf) {
       discountOrigPrice: m ? parseInt(m[1],10) : null,
       ctcitno: String(row['CTCITNO']||'').trim(),
       onSale: String(row['値引中']||'').trim() !== '',
+      asin: String(row['ASIN']||'').trim(),
     });
   });
   return map;
@@ -1004,6 +1005,7 @@ function aggregate(rows) {
       isDiscount:     m ? m.isDiscount       : false,
       discountOrigPrice: m ? m.discountOrigPrice : null,
       onSale:         m ? m.onSale           : false,
+      asin:           m ? m.asin             : '',
       lastBuyDate:    m ? m.lastBuyDate       : null,
       rtInv:  m ? m.rtInv  : null,
       azInv:  m ? m.azInv  : null,
@@ -1155,7 +1157,7 @@ function renderTable(data) {
 
     // 複数買いバッジ
     const multiBadge = row.multiOrderCount > 0
-      ? `<span class="multi-badge">×2以上 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
+      ? `<span class="multi-badge">複数購入 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
 
     const inv = [['RT', row.rtInv], ['AZ', row.azInv], ['RSL', row.rslInv]].map(([l, v]) => {
       const cls = v === 0 ? 'inv-z' : 'inv-v';
@@ -1238,26 +1240,37 @@ function renderModal() {
   titleEl.style.cssText = nameColor;
   titleEl.textContent = row.name;
 
-  // バッジ行（複数買い・値引き・マイナス）
+  // リンクボタン（楽天・Amazon）
+  const rtUrl = `https://item.rakuten.co.jp/world-depo/${encodeURIComponent(row.rawCode)}/`;
+  const azUrl = row.asin ? `https://www.amazon.co.jp/dp/${row.asin}` : '';
+  const linkHtml = `
+    <a href="${rtUrl}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,107,53,.15);border:1px solid rgba(255,107,53,.4);border-radius:5px;padding:4px 10px;font-size:11px;color:var(--rt);text-decoration:none;font-weight:700;transition:all .15s" onmouseover="this.style.background='rgba(255,107,53,.3)'" onmouseout="this.style.background='rgba(255,107,53,.15)'">🏪 楽天で見る</a>
+    ${azUrl ? `<a href="${azUrl}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;background:rgba(74,158,255,.15);border:1px solid rgba(74,158,255,.4);border-radius:5px;padding:4px 10px;font-size:11px;color:var(--az);text-decoration:none;font-weight:700;transition:all .15s" onmouseover="this.style.background='rgba(74,158,255,.3)'" onmouseout="this.style.background='rgba(74,158,255,.15)'">📦 Amazonで見る</a>` : ''}`;
+  el('modal-badges').innerHTML = '';
   const srcBadges = [...row.malls].map(s =>
     `<span class="badge badge-${s.toLowerCase()}" style="font-size:11px;padding:3px 8px">${MALLS[s].label}</span>`
   ).join('');
   const discBadge = row.isDiscount
     ? `<span class="badge badge-disc" style="font-size:11px;padding:3px 8px">★ 値引き仕入れ品</span>` : '';
   const multiBadge = row.multiOrderCount > 0
-    ? `<span class="multi-badge" style="font-size:11px;padding:3px 8px">×2以上 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
+    ? `<span class="multi-badge" style="font-size:11px;padding:3px 8px">複数購入 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
   const negBadge = row.totalProfit!==null&&row.totalProfit<0
     ? `<span class="badge badge-neg" style="font-size:11px;padding:3px 8px">⚠ 粗利マイナス</span>` : '';
-  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge;
+  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge + linkHtml;
 
-  // ランキング位置（モール別）
-  const rankBadges = [...row.malls].map(mall => {
+  // ランキング位置（モール別）でかく・クール
+  const rankLines = [...row.malls].map(mall => {
     const short = MALL_SHORT[mall] || mall;
     const mallData = modalData.filter(r => r.malls.has(mall));
     const pos = mallData.findIndex(r => r.sku === row.sku);
-    return pos >= 0 ? `${short} ${pos+1}/${mallData.length}` : '';
-  }).filter(Boolean).join('　');
-  el('modal-rank-badge').textContent = rankBadges;
+    if(pos < 0) return '';
+    return `<div style="display:flex;align-items:baseline;gap:4px;line-height:1">
+      <span style="font-size:13px;letter-spacing:2px;color:var(--text3)">${short}</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:42px;color:#fff;letter-spacing:-1px">${pos+1}</span>
+      <span style="font-size:13px;color:var(--text3)">/ ${mallData.length}</span>
+    </div>`;
+  }).filter(Boolean).join('');
+  el('modal-rank-badge').innerHTML = `<div style="display:flex;gap:16px;align-items:flex-end">${rankLines}</div>`;
 
   // スライドナビ
   const navEl = el('modal-slide-nav');
@@ -1279,12 +1292,21 @@ function renderModal() {
       <div class="modal-kpi-val" style="color:${row.totalProfit!==null&&row.totalProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.totalProfit,'+')}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">全売上</div><div class="modal-kpi-val">¥${row.totalSales?fmt(row.totalSales):'—'}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">仕入単価</div><div class="modal-kpi-val">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div></div>
-    <div class="modal-kpi"><div class="modal-kpi-label">手数料率</div><div class="modal-kpi-val">${((row.feeRate||0.1)*100).toFixed(1)}%</div></div>`;
+    <div class="modal-kpi" style="border-right:none">
+      <div class="modal-kpi-label">在庫</div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        ${[['RT',row.rtInv],['AZ',row.azInv],['RSL',row.rslInv]].map(([l,v])=>`
+          <div style="text-align:center">
+            <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:2px">${l}</div>
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:${v===0?'var(--accent2)':'#ffffff'}">${v===null?'—':v}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
 
   // 明細
   let bodyHtml = '';
   if(row.isDiscount && row.discountOrigPrice) {
-    bodyHtml += `<div class="modal-disc-note">★ 値引き仕入れ品 — 通常価格から割引購入（元値 ¥${fmt(row.discountOrigPrice)}）。登録仕入額 ¥${fmt(row.buyPrice)}。</div>`;
+    bodyHtml += `<div class="modal-disc-note">★ 値引き仕入れ品　¥${fmt(row.buyPrice)}（元値 ¥${fmt(row.discountOrigPrice)}）</div>`;
   }
   bodyHtml += `<table class="detail-table">
     <thead><tr>
