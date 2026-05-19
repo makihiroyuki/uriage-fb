@@ -118,7 +118,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .fbtn[data-f="disc"].active{background:rgba(240,192,64,.2);color:var(--accent);border-color:var(--accent)}
 
 .data-table{width:100%;border-collapse:collapse;font-size:14px}
-.data-table th{text-align:right;padding:10px 12px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+.data-table thead{position:sticky;top:0;z-index:10;background:var(--surface)}
+.data-table th{text-align:right;padding:10px 12px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);border-bottom:2px solid var(--border2);white-space:nowrap;cursor:pointer;user-select:none}
 .data-table th:first-child,.data-table th:nth-child(2),.data-table th:last-child{text-align:left}
 .data-table th:hover{color:var(--text2)}
 .data-table th.sort-asc::after{content:' ↑';color:var(--accent)}
@@ -131,7 +132,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .data-table td:first-child,.data-table td:nth-child(2),.data-table td:last-child{text-align:left}
 .rank-num{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--text3);width:32px}
 .rank-num.top3{color:var(--accent)}
-.prod-name{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;font-size:15px}
+.prod-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;font-size:15px;display:flex;align-items:center;flex-wrap:nowrap;gap:4px}
+.prod-name-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:1;min-width:0}
 .badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:3px;margin-left:5px;vertical-align:middle}
 .badge-rt{background:rgba(255,107,53,.2);color:var(--rt)}
 .badge-az{background:rgba(74,158,255,.2);color:var(--az)}
@@ -944,6 +946,8 @@ function parseMasterXlsx(buf) {
       ctcitno: String(row['CTCITNO']||'').trim(),
       onSale: String(row['値引中']||'').trim() !== '',
       asin: (()=>{ const v=String(row['商品ID']||'').trim(); return (v&&v!=='なし')?v:''; })(),
+      salePrice: (()=>{ const v=toNum(row['値引き時価格']); return (v&&v>0)?v:null; })(),
+      profitTarget: toNum(row['利益']),
     });
   });
   return map;
@@ -960,7 +964,7 @@ function codeToKey(code) {
 // AGGREGATE
 // ============================================================
 function aggregate(rows) {
-  const FEE_RATE = 0.10; // 全モール固定10%
+  const FEE_RATE = 0.10;
   const skuMap = new Map();
   rows.forEach(row => {
     const code   = String(row['商品コード']||'').trim();
@@ -976,14 +980,18 @@ function aggregate(rows) {
         name:(master&&master.name)||cleanName(String(row['商品名']||'')),
         master, qty:0, totalSales:0, prices:[], malls:new Set(), rows:[],
         orderCount:0, multiOrderCount:0, cancelCount:0,
+        totalShipFee:0, // 注文ごとの送料合計
       });
     }
     const e = skuMap.get(key);
     const status = String(row['処理/出荷日']||row['処理/出荷ステータス']||'');
     const isCancelled = status.includes('キャンセル');
+    const shipFee = master ? (master.shipFee||0) : 0;
     if(!isCancelled) {
       e.qty += qty;
       if(price!==null){ e.totalSales += price*qty; e.prices.push({price,qty}); }
+      // 送料は注文1件につき1回分（数量に関わらず）
+      e.totalShipFee += shipFee;
     }
     e.malls.add(mall);
     e.rows.push(row);
@@ -996,25 +1004,30 @@ function aggregate(rows) {
     const m = e.master;
     const buyPrice  = m ? (m.buyPrice||0) : null;
     const shipFee   = m ? (m.shipFee||0)  : null;
+
+    // 値引き中の場合は値引き時価格を仕入れ単価として使用
+    const effectiveBuyPrice = (m && m.onSale && m.salePrice) ? m.salePrice : buyPrice;
+
     const totalPriceWeight = e.prices.reduce((s,p)=>s+p.price*p.qty,0);
     const totalQtyPriced   = e.prices.reduce((s,p)=>s+p.qty,0);
     const avgSalesPrice    = totalQtyPriced>0 ? totalPriceWeight/totalQtyPriced : null;
 
-    const hasCost = buyPrice!==null && avgSalesPrice!==null;
-    // 単粗利 = 販売単価×0.9 - 仕入れ金額（送料は含めない）
-    const unitProfitBeforeShip = hasCost ? avgSalesPrice*(1-FEE_RATE)-buyPrice : null;
-    // 全粗利 = 単粗利×数量 - 送料1回分（まとめ買いでも送料は1回）
-    const unitProfit  = hasCost ? Math.round(unitProfitBeforeShip - shipFee) : null;
-    const totalProfit = hasCost ? Math.round(unitProfitBeforeShip * e.qty - shipFee) : null;
+    const hasCost = effectiveBuyPrice!==null && avgSalesPrice!==null;
+    // 単粗利 = 販売単価×0.9 - 仕入れ金額 - 送料1回（参考値）
+    const unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-FEE_RATE) - effectiveBuyPrice - shipFee) : null;
+    // 全粗利 = (販売単価×0.9 - 仕入れ) × 総数量 - 送料×注文件数
+    const unitProfitBeforeShip = hasCost ? avgSalesPrice*(1-FEE_RATE) - effectiveBuyPrice : null;
+    const totalProfit = hasCost ? Math.round(unitProfitBeforeShip * e.qty - e.totalShipFee) : null;
 
     return {
       ...e,
-      buyPrice, shipFee, avgSalesPrice, unitProfit, totalProfit,
+      buyPrice: effectiveBuyPrice, shipFee, avgSalesPrice, unitProfit, totalProfit,
       feeRate: FEE_RATE,
       isDiscount:     m ? m.isDiscount       : false,
       discountOrigPrice: m ? m.discountOrigPrice : null,
       onSale:         m ? m.onSale           : false,
       asin:           m ? m.asin             : '',
+      profitTarget:   m ? m.profitTarget     : null,
       lastBuyDate:    m ? m.lastBuyDate       : null,
       rtInv:  m ? m.rtInv  : null,
       azInv:  m ? m.azInv  : null,
@@ -1194,8 +1207,11 @@ function renderTable(data) {
 
     tr.innerHTML = `
       <td class="rank-num ${i < 3 ? 'top3' : ''}" style="text-align:left">${i + 1}</td>
-      <td style="text-align:left">
-        <div class="prod-name" style="${nameColor}">${esc(row.name)}${srcBadges}${discBadge}${cancelBadge}</div>
+      <td style="text-align:left;max-width:0;width:40%">
+        <div class="prod-name">
+          <span class="prod-name-text" style="${nameColor}">${esc(row.name)}</span>
+          ${srcBadges}${discBadge}${cancelBadge}
+        </div>
         <div style="font-size:10px;color:var(--text3);margin-top:2px;font-family:monospace">${esc(row.rawCode)}</div>
       </td>
       <td style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#e8eaf0;font-weight:normal;letter-spacing:1px">${row.qty}</td>
@@ -1266,7 +1282,10 @@ function renderModal() {
   const nameColor = row.onSale ? 'color:var(--accent)' : '';
   const titleEl = el('modal-title');
   titleEl.style.cssText = nameColor;
-  titleEl.textContent = row.name;
+  titleEl.innerHTML = esc(row.name) +
+    (row.profitTarget !== null
+      ? `　<span style="font-size:13px;font-weight:400;color:var(--text3);letter-spacing:1px">利益設定 <span style="color:var(--accent3);font-weight:700">¥${fmt(row.profitTarget)}</span></span>`
+      : '');
 
   // リンクボタン（楽天・Amazon）
   const rtUrl = `https://item.rakuten.co.jp/world-depo/${encodeURIComponent(row.rawCode)}/`;
@@ -1311,24 +1330,20 @@ function renderModal() {
     navEl.style.display = 'none';
   }
 
-  // KPIサマリー
+  const avgSalePrice = row.qty > 0 && row.totalSales ? Math.round(row.totalSales / row.qty) : null;
+
+  // KPIサマリー：数量 単販売価格 単粗利 全売上 全粗利 仕入価格
   el('modal-summary').innerHTML = `
     <div class="modal-kpi"><div class="modal-kpi-label">数量</div><div class="modal-kpi-val" style="color:var(--accent)">${row.qty}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">単販売価格</div><div class="modal-kpi-val">¥${avgSalePrice!==null?fmt(avgSalePrice):'—'}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">単粗利</div>
       <div class="modal-kpi-val" style="color:${row.unitProfit!==null&&row.unitProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.unitProfit,'+')}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">全売上</div><div class="modal-kpi-val">¥${row.totalSales?fmt(row.totalSales):'—'}</div></div>
     <div class="modal-kpi"><div class="modal-kpi-label">全粗利</div>
       <div class="modal-kpi-val" style="color:${row.totalProfit!==null&&row.totalProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.totalProfit,'+')}</div></div>
-    <div class="modal-kpi"><div class="modal-kpi-label">全売上</div><div class="modal-kpi-val">¥${row.totalSales?fmt(row.totalSales):'—'}</div></div>
-    <div class="modal-kpi"><div class="modal-kpi-label">仕入単価</div><div class="modal-kpi-val">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div></div>
     <div class="modal-kpi" style="border-right:none">
-      <div class="modal-kpi-label">在庫</div>
-      <div style="display:flex;gap:10px;margin-top:4px">
-        ${[['RT',row.rtInv],['AZ',row.azInv],['RSL',row.rslInv]].map(([l,v])=>`
-          <div style="text-align:center">
-            <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:2px">${l}</div>
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:${v===0?'var(--accent2)':'#ffffff'}">${v===null?'—':v}</div>
-          </div>`).join('')}
-      </div>
+      <div class="modal-kpi-label">仕入価格${row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':''}</div>
+      <div class="modal-kpi-val" style="${row.onSale?'color:var(--accent)':''}">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div>
     </div>`;
 
   // 明細
