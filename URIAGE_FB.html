@@ -1344,6 +1344,16 @@ function renderModal() {
     <div class="modal-kpi" style="border-right:none">
       <div class="modal-kpi-label">仕入価格${row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':''}</div>
       <div class="modal-kpi-val" style="${row.onSale?'color:var(--accent)':''}">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div>
+    </div>
+    <div class="modal-kpi" style="border-right:none">
+      <div class="modal-kpi-label">在庫</div>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        ${[['RT',row.rtInv],['AZ',row.azInv],['RSL',row.rslInv]].map(([l,v])=>`
+          <div style="text-align:center">
+            <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:2px">${l}</div>
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:${v===0?'var(--accent2)':'#ffffff'}">${v===null?'—':v}</div>
+          </div>`).join('')}
+      </div>
     </div>`;
 
   // 明細
