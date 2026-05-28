@@ -937,27 +937,48 @@ function applyPeriodAndRender() {
 // ============================================================
 // MASTER
 // ============================================================
-// AZ手数料CSV解析（AN列=販売手数料率、A列=ASIN、B列=SKU/商品コード）
+// AZ手数料CSV解析（2行ヘッダー構造: 1行目=大見出し、2行目=ASIN/SKU等のカラム名）
 function parseAzFeeCSV(text) {
-  const rows = parseCSV(text);
-  // ヘッダー行を探す（「ASIN」が含まれる行）
-  let dataRows = rows.filter(r => {
-    const vals = Object.values(r);
-    return vals.some(v => String(v).trim() === 'ASIN');
-  });
-  // parseCSVで最初の行がヘッダーになるので直接データを使う
-  rows.forEach(r => {
-    // A列(商品/ASIN)、B列(SKU)、AN列(販売手数料率)
-    const keys = Object.keys(r);
-    const asin   = String(r[keys[0]]||'').trim();
-    const sku    = String(r[keys[1]]||'').trim();
-    const feeStr = String(r['販売手数料率']||r[keys[39]]||'').trim();
-    if(!sku || !feeStr || feeStr === '手数料(税抜)÷純売上') return;
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if(lines.length < 3) return;
+
+  // 2行目がASIN/SKUのヘッダー行
+  const parseFields = (line) => {
+    const fields = []; let cur = '', inQ = false;
+    for(let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if(c === '"') inQ = !inQ;
+      else if(c === ',' && !inQ) { fields.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    fields.push(cur.trim());
+    return fields;
+  };
+
+  const header1 = parseFields(lines[0]); // 大見出し行（販売手数料率などの列位置）
+  const header2 = parseFields(lines[1]); // ASIN, SKU, 商品名...
+
+  // AN列(39番目)の位置を大見出しから特定
+  const feeColIdx = header1.findIndex(h => String(h).includes('販売手数料率'));
+  // SKU列はheader2の1番目
+  const skuColIdx = header2.findIndex(h => String(h).trim() === 'SKU');
+  if(feeColIdx < 0 || skuColIdx < 0) {
+    console.warn('AZ手数料CSV: 列が見つかりません', {feeColIdx, skuColIdx});
+    return;
+  }
+
+  // 3行目以降がデータ（2行目の合計行はスキップ）
+  for(let i = 2; i < lines.length; i++) {
+    const fields = parseFields(lines[i]);
+    const sku    = String(fields[skuColIdx]||'').trim();
+    const feeStr = String(fields[feeColIdx]||'').trim();
+    if(!sku || !feeStr || sku === 'SKU') continue;
     const feeNum = parseFloat(feeStr.replace('%',''));
-    if(isNaN(feeNum)) return;
+    if(isNaN(feeNum)) continue;
     const key = codeToKey(sku);
     azFeeMap.set(key, feeNum / 100);
-  });
+  }
+  console.log('AZ手数料読み込み完了:', azFeeMap.size, '件');
 }
 
 function parseMasterXlsx(buf) {
@@ -1395,6 +1416,10 @@ function renderModal() {
     <div class="modal-kpi" style="border-right:none">
       <div class="modal-kpi-label">仕入価格${row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':''}</div>
       <div class="modal-kpi-val" style="${row.onSale?'color:var(--accent)':''}">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div>
+    </div>
+    <div class="modal-kpi" style="border-right:none">
+      <div class="modal-kpi-label">手数料率${[...row.malls].includes('AZ') ? '　<span style="font-size:10px;color:var(--az)">AZ実績</span>' : ''}</div>
+      <div class="modal-kpi-val" style="color:var(--text2)">${((row.feeRate||0.1)*100).toFixed(1)}%</div>
     </div>
     <div class="modal-kpi" style="border-right:none">
       <div class="modal-kpi-label">在庫</div>
