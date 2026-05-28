@@ -787,19 +787,23 @@ async function refreshData() {
       masterMap = parseMasterXlsx(buf);
     }
 
-    // AZ手数料CSVを読み込む（AZ手数料フォルダ）
+    // AZ手数料CSVを読み込む（ルート直下のAZ手数料フォルダ）
     azFeeMap = new Map();
     try {
-      const azFeeFolder = await findFolder(rootId, 'AZ手数料');
+      // ルート直下の全ファイル・フォルダから「AZ手数料」を探す（MIMEタイプ問わず）
+      const azFeeFolder = rootFiles.find(f => f.name === 'AZ手数料');
       if(azFeeFolder) {
         setStatus('loading', 'AZ手数料データ を読み込み中...');
-        const azFeeFiles = await driveList(azFeeFolder);
+        const azFeeFiles = await driveList(azFeeFolder.id);
         const azFeeCsvs = azFeeFiles.filter(f => /\.csv$/i.test(f.name));
         for(const f of azFeeCsvs) {
           const buf  = await downloadDriveFile(f.id);
           const text = new TextDecoder('shift-jis').decode(buf);
           parseAzFeeCSV(text);
         }
+        console.log('AZ手数料読み込み完了:', azFeeMap.size, '件');
+      } else {
+        console.warn('AZ手数料フォルダが見つかりません');
       }
     } catch(e) { console.warn('AZ手数料読み込みエラー:', e); }
 
