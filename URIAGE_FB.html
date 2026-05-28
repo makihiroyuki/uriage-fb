@@ -454,6 +454,7 @@ const MASTER_PATTERN = /master|マスタ/i;
 
 let cfg = loadCfg();
 let masterMap = new Map();
+let azFeeMap = new Map(); // 商品コード → 手数料率（AZ専用）
 let allRows = [];   // raw aggregated rows (all dates)
 let displayData = [];
 let currentFilter = 'all';
@@ -786,6 +787,22 @@ async function refreshData() {
       masterMap = parseMasterXlsx(buf);
     }
 
+    // AZ手数料CSVを読み込む（AZ手数料フォルダ）
+    azFeeMap = new Map();
+    try {
+      const azFeeFolder = await findFolder(rootId, 'AZ手数料');
+      if(azFeeFolder) {
+        setStatus('loading', 'AZ手数料データ を読み込み中...');
+        const azFeeFiles = await driveList(azFeeFolder);
+        const azFeeCsvs = azFeeFiles.filter(f => /\.csv$/i.test(f.name));
+        for(const f of azFeeCsvs) {
+          const buf  = await downloadDriveFile(f.id);
+          const text = new TextDecoder('shift-jis').decode(buf);
+          parseAzFeeCSV(text);
+        }
+      }
+    } catch(e) { console.warn('AZ手数料読み込みエラー:', e); }
+
     // 年月セレクターを構築
     setStatus('loading', '利用可能な年月を確認中...');
     const yms = await getAvailableYearMonths(rootId);
@@ -920,6 +937,29 @@ function applyPeriodAndRender() {
 // ============================================================
 // MASTER
 // ============================================================
+// AZ手数料CSV解析（AN列=販売手数料率、A列=ASIN、B列=SKU/商品コード）
+function parseAzFeeCSV(text) {
+  const rows = parseCSV(text);
+  // ヘッダー行を探す（「ASIN」が含まれる行）
+  let dataRows = rows.filter(r => {
+    const vals = Object.values(r);
+    return vals.some(v => String(v).trim() === 'ASIN');
+  });
+  // parseCSVで最初の行がヘッダーになるので直接データを使う
+  rows.forEach(r => {
+    // A列(商品/ASIN)、B列(SKU)、AN列(販売手数料率)
+    const keys = Object.keys(r);
+    const asin   = String(r[keys[0]]||'').trim();
+    const sku    = String(r[keys[1]]||'').trim();
+    const feeStr = String(r['販売手数料率']||r[keys[39]]||'').trim();
+    if(!sku || !feeStr || feeStr === '手数料(税抜)÷純売上') return;
+    const feeNum = parseFloat(feeStr.replace('%',''));
+    if(isNaN(feeNum)) return;
+    const key = codeToKey(sku);
+    azFeeMap.set(key, feeNum / 100);
+  });
+}
+
 function parseMasterXlsx(buf) {
   const wb = XLSX.read(buf, { type:'array' });
   const ws = wb.Sheets['全商品DB'];
@@ -980,17 +1020,24 @@ function aggregate(rows) {
         name:(master&&master.name)||cleanName(String(row['商品名']||'')),
         master, qty:0, totalSales:0, prices:[], malls:new Set(), rows:[],
         orderCount:0, multiOrderCount:0, cancelCount:0,
-        totalShipFee:0, // 注文ごとの送料合計
+        totalShipFee:0,
+        totalFeeAmount:0, // 手数料合計（AZは個別レート）
       });
     }
     const e = skuMap.get(key);
     const status = String(row['処理/出荷日']||row['処理/出荷ステータス']||'');
     const isCancelled = status.includes('キャンセル');
     const shipFee = master ? (master.shipFee||0) : 0;
+    // AZはazFeeMapの手数料率、それ以外は10%
+    const feeRate = (mall === 'AZ' && azFeeMap.has(key))
+      ? azFeeMap.get(key) : 0.10;
     if(!isCancelled) {
       e.qty += qty;
-      if(price!==null){ e.totalSales += price*qty; e.prices.push({price,qty}); }
-      // 送料は注文1件につき1回分（数量に関わらず）
+      if(price!==null){
+        e.totalSales += price*qty;
+        e.prices.push({price, qty, feeRate});
+        e.totalFeeAmount += price * qty * feeRate;
+      }
       e.totalShipFee += shipFee;
     }
     e.malls.add(mall);
@@ -1012,17 +1059,21 @@ function aggregate(rows) {
     const totalQtyPriced   = e.prices.reduce((s,p)=>s+p.qty,0);
     const avgSalesPrice    = totalQtyPriced>0 ? totalPriceWeight/totalQtyPriced : null;
 
+    // 実効手数料率（AZは個別レート加重平均、その他は10%）
+    const effectiveFeeRate = e.totalSales > 0 ? e.totalFeeAmount / e.totalSales : 0.10;
+
     const hasCost = effectiveBuyPrice!==null && avgSalesPrice!==null;
-    // 単粗利 = 販売単価×0.9 - 仕入れ金額 - 送料1回（参考値）
-    const unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-FEE_RATE) - effectiveBuyPrice - shipFee) : null;
-    // 全粗利 = (販売単価×0.9 - 仕入れ) × 総数量 - 送料×注文件数
-    const unitProfitBeforeShip = hasCost ? avgSalesPrice*(1-FEE_RATE) - effectiveBuyPrice : null;
-    const totalProfit = hasCost ? Math.round(unitProfitBeforeShip * e.qty - e.totalShipFee) : null;
+    // 単粗利 = 販売単価×(1-実効手数料率) - 仕入れ - 送料1回
+    const unitProfit = hasCost
+      ? Math.round(avgSalesPrice*(1-effectiveFeeRate) - effectiveBuyPrice - shipFee) : null;
+    // 全粗利 = 販売総額×(1-実効手数料率) - 仕入れ×数量 - 送料×注文件数
+    const totalProfit = hasCost
+      ? Math.round(e.totalSales*(1-effectiveFeeRate) - effectiveBuyPrice*e.qty - e.totalShipFee) : null;
 
     return {
       ...e,
       buyPrice: effectiveBuyPrice, shipFee, avgSalesPrice, unitProfit, totalProfit,
-      feeRate: FEE_RATE,
+      feeRate: effectiveFeeRate,
       isDiscount:     m ? m.isDiscount       : false,
       discountOrigPrice: m ? m.discountOrigPrice : null,
       onSale:         m ? m.onSale           : false,
