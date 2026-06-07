@@ -582,11 +582,15 @@ async function startLoadingWithDrive() {
       if(azFeeFolder) {
         statusEl.textContent = 'LOADING AZ FEE DATA...';
         const azFeeFiles = await driveList(azFeeFolder.id);
-        const azFeeCsvs = azFeeFiles.filter(f => /\.csv$/i.test(f.name));
-        for(const f of azFeeCsvs) {
-          const buf  = await downloadDriveFile(f.id);
-          const text = new TextDecoder('shift-jis').decode(buf);
-          parseAzFeeCSV(text);
+        const azFeeTargets = azFeeFiles.filter(f => /\.(csv|xlsx|xls)$/i.test(f.name));
+        for(const f of azFeeTargets) {
+          const buf = await downloadDriveFile(f.id);
+          if(/\.xlsx?$/i.test(f.name)) {
+            parseAzFeeXlsx(buf);
+          } else {
+            const text = new TextDecoder('shift-jis').decode(buf);
+            parseAzFeeCSV(text);
+          }
         }
         console.log('AZ手数料読み込み完了:', azFeeMap.size, '件');
       }
@@ -807,16 +811,19 @@ async function refreshData() {
     // AZ手数料CSVを読み込む（ルート直下のAZ手数料フォルダ）
     azFeeMap = new Map();
     try {
-      // ルート直下の全ファイル・フォルダから「AZ手数料」を探す（MIMEタイプ問わず）
       const azFeeFolder = rootFiles.find(f => f.name === 'AZ手数料');
       if(azFeeFolder) {
         setStatus('loading', 'AZ手数料データ を読み込み中...');
         const azFeeFiles = await driveList(azFeeFolder.id);
-        const azFeeCsvs = azFeeFiles.filter(f => /\.csv$/i.test(f.name));
-        for(const f of azFeeCsvs) {
-          const buf  = await downloadDriveFile(f.id);
-          const text = new TextDecoder('shift-jis').decode(buf);
-          parseAzFeeCSV(text);
+        const azFeeTargets = azFeeFiles.filter(f => /\.(csv|xlsx|xls)$/i.test(f.name));
+        for(const f of azFeeTargets) {
+          const buf = await downloadDriveFile(f.id);
+          if(/\.xlsx?$/i.test(f.name)) {
+            parseAzFeeXlsx(buf);
+          } else {
+            const text = new TextDecoder('shift-jis').decode(buf);
+            parseAzFeeCSV(text);
+          }
         }
         console.log('AZ手数料読み込み完了:', azFeeMap.size, '件');
       } else {
@@ -958,12 +965,40 @@ function applyPeriodAndRender() {
 // ============================================================
 // MASTER
 // ============================================================
-// AZ手数料CSV解析（2行ヘッダー構造: 1行目=大見出し、2行目=ASIN/SKU等のカラム名）
+// AZ手数料CSV解析
+// 構造: A列=ASIN, B列=SKU, C列=手数料率（小数 or %形式）
+// 1行目=大見出し、2行目=カラム名、3行目=合計行（スキップ）、4行目以降=データ
+// AZ手数料XLSX解析（A=ASIN, B=SKU, C=手数料率）
+function parseAzFeeXlsx(buf) {
+  try {
+    const wb = XLSX.read(buf, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+    // 4行目以降がデータ（0=大見出し、1=カラム名、2=合計行はスキップ）
+    for(let i = 3; i < data.length; i++) {
+      const row = data[i];
+      const sku    = String(row[1]||'').trim();
+      const feeVal = row[2];
+      if(!sku || feeVal === '' || feeVal === null) continue;
+      let feeNum;
+      if(typeof feeVal === 'number') {
+        feeNum = feeVal; // すでに小数（0.169）
+      } else {
+        const s = String(feeVal).replace('%','').trim();
+        feeNum = parseFloat(s);
+        if(String(feeVal).includes('%')) feeNum /= 100;
+      }
+      if(isNaN(feeNum) || feeNum <= 0) continue;
+      azFeeMap.set(codeToKey(sku), feeNum);
+    }
+    console.log('AZ手数料XLSX読み込み完了:', azFeeMap.size, '件');
+  } catch(e) { console.warn('AZ手数料XLSX解析エラー:', e); }
+}
+
 function parseAzFeeCSV(text) {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if(lines.length < 3) return;
+  if(lines.length < 4) return;
 
-  // 2行目がASIN/SKUのヘッダー行
   const parseFields = (line) => {
     const fields = []; let cur = '', inQ = false;
     for(let i = 0; i < line.length; i++) {
@@ -976,28 +1011,23 @@ function parseAzFeeCSV(text) {
     return fields;
   };
 
-  const header1 = parseFields(lines[0]); // 大見出し行（販売手数料率などの列位置）
-  const header2 = parseFields(lines[1]); // ASIN, SKU, 商品名...
-
-  // AN列(39番目)の位置を大見出しから特定
-  const feeColIdx = header1.findIndex(h => String(h).includes('販売手数料率'));
-  // SKU列はheader2の1番目
-  const skuColIdx = header2.findIndex(h => String(h).trim() === 'SKU');
-  if(feeColIdx < 0 || skuColIdx < 0) {
-    console.warn('AZ手数料CSV: 列が見つかりません', {feeColIdx, skuColIdx});
-    return;
-  }
-
-  // 3行目以降がデータ（2行目の合計行はスキップ）
-  for(let i = 2; i < lines.length; i++) {
+  // 4行目以降がデータ（0=大見出し、1=カラム名、2=合計行はスキップ）
+  for(let i = 3; i < lines.length; i++) {
     const fields = parseFields(lines[i]);
-    const sku    = String(fields[skuColIdx]||'').trim();
-    const feeStr = String(fields[feeColIdx]||'').trim();
-    if(!sku || !feeStr || sku === 'SKU') continue;
-    const feeNum = parseFloat(feeStr.replace('%',''));
-    if(isNaN(feeNum)) continue;
+    if(fields.length < 3) continue;
+    const sku    = String(fields[1]||'').trim(); // B列=SKU
+    const feeStr = String(fields[2]||'').trim(); // C列=手数料率
+    if(!sku || !feeStr) continue;
+    // 小数（0.169）または%（16.9%）どちらにも対応
+    let feeNum;
+    if(feeStr.includes('%')) {
+      feeNum = parseFloat(feeStr.replace('%','')) / 100;
+    } else {
+      feeNum = parseFloat(feeStr);
+    }
+    if(isNaN(feeNum) || feeNum <= 0) continue;
     const key = codeToKey(sku);
-    azFeeMap.set(key, feeNum / 100);
+    azFeeMap.set(key, feeNum);
   }
   console.log('AZ手数料読み込み完了:', azFeeMap.size, '件');
 }
