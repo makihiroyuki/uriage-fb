@@ -604,7 +604,7 @@ async function startLoadingWithDrive() {
       if(mabFile) {
         statusEl.textContent = 'LOADING MAB DATA...';
         const buf  = await downloadDriveFile(mabFile.id);
-        const text = new TextDecoder('cp932').decode(buf);
+        const text = new TextDecoder('shift-jis').decode(buf);
         parseMabCSV(text);
         console.log('mab粗利表読み込み完了:', mabMap.size, '件');
       }
@@ -851,7 +851,7 @@ async function refreshData() {
       const mabFile = rootFiles.find(f => /^mabararihyo/i.test(f.name));
       if(mabFile) {
         const buf  = await downloadDriveFile(mabFile.id);
-        const text = new TextDecoder('cp932').decode(buf);
+        const text = new TextDecoder('shift-jis').decode(buf);
         parseMabCSV(text);
         console.log('mab粗利表読み込み完了:', mabMap.size, '件');
       }
