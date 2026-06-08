@@ -455,6 +455,7 @@ const MASTER_PATTERN = /master|マスタ/i;
 let cfg = loadCfg();
 let masterMap = new Map();
 let azFeeMap = new Map(); // 商品コード → 手数料率（AZ専用）
+let mabMap = new Map();   // mab-商品コード → 粗利単価
 let allRows = [];   // raw aggregated rows (all dates)
 let displayData = [];
 let currentFilter = 'all';
@@ -595,6 +596,19 @@ async function startLoadingWithDrive() {
         console.log('AZ手数料読み込み完了:', azFeeMap.size, '件');
       }
     } catch(e) { console.warn('AZ手数料読み込みエラー:', e); }
+
+    // mab粗利表読み込み（ルート直下のmabararihyo.csv）
+    mabMap = new Map();
+    try {
+      const mabFile = rootFiles.find(f => /^mabararihyo/i.test(f.name));
+      if(mabFile) {
+        statusEl.textContent = 'LOADING MAB DATA...';
+        const buf  = await downloadDriveFile(mabFile.id);
+        const text = new TextDecoder('cp932').decode(buf);
+        parseMabCSV(text);
+        console.log('mab粗利表読み込み完了:', mabMap.size, '件');
+      }
+    } catch(e) { console.warn('mab粗利表読み込みエラー:', e); }
 
     // 年月確認
     statusEl.textContent = 'SCANNING FOLDERS...';
@@ -831,6 +845,18 @@ async function refreshData() {
       }
     } catch(e) { console.warn('AZ手数料読み込みエラー:', e); }
 
+    // mab粗利表読み込み
+    mabMap = new Map();
+    try {
+      const mabFile = rootFiles.find(f => /^mabararihyo/i.test(f.name));
+      if(mabFile) {
+        const buf  = await downloadDriveFile(mabFile.id);
+        const text = new TextDecoder('cp932').decode(buf);
+        parseMabCSV(text);
+        console.log('mab粗利表読み込み完了:', mabMap.size, '件');
+      }
+    } catch(e) { console.warn('mab粗利表読み込みエラー:', e); }
+
     // 年月セレクターを構築
     setStatus('loading', '利用可能な年月を確認中...');
     const yms = await getAvailableYearMonths(rootId);
@@ -969,6 +995,19 @@ function applyPeriodAndRender() {
 // 構造: A列=ASIN, B列=SKU, C列=手数料率（小数 or %形式）
 // 1行目=大見出し、2行目=カラム名、3行目=合計行（スキップ）、4行目以降=データ
 // AZ手数料XLSX解析（A=ASIN, B=SKU, C=手数料率）
+// mab粗利表CSV解析（A列=商品管理番号, E列=粗利）
+function parseMabCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if(lines.length < 2) return;
+  for(let i = 1; i < lines.length; i++) { // 1行目はヘッダー
+    const fields = lines[i].split(',');
+    const code   = String(fields[0]||'').trim();
+    const profit = parseFloat(String(fields[4]||'').trim());
+    if(!code || isNaN(profit)) continue;
+    mabMap.set(code.toLowerCase(), profit);
+  }
+}
+
 function parseAzFeeXlsx(buf) {
   try {
     const wb = XLSX.read(buf, { type:'array' });
@@ -1123,29 +1162,32 @@ function aggregate(rows) {
     const m = e.master;
     const buyPrice  = m ? (m.buyPrice||0) : null;
     const shipFee   = m ? (m.shipFee||0)  : null;
-
-    // 値引き中の場合は値引き時価格を仕入れ単価として使用
     const effectiveBuyPrice = (m && m.onSale && m.salePrice) ? m.salePrice : buyPrice;
 
     const totalPriceWeight = e.prices.reduce((s,p)=>s+p.price*p.qty,0);
     const totalQtyPriced   = e.prices.reduce((s,p)=>s+p.qty,0);
     const avgSalesPrice    = totalQtyPriced>0 ? totalPriceWeight/totalQtyPriced : null;
-
-    // 実効手数料率（AZは個別レート加重平均、その他は10%）
     const effectiveFeeRate = e.totalSales > 0 ? e.totalFeeAmount / e.totalSales : 0.10;
 
-    const hasCost = effectiveBuyPrice!==null && avgSalesPrice!==null;
-    // 単粗利 = 販売単価×(1-実効手数料率) - 仕入れ - 送料1回
-    const unitProfit = hasCost
-      ? Math.round(avgSalesPrice*(1-effectiveFeeRate) - effectiveBuyPrice - shipFee) : null;
-    // 全粗利 = 販売総額×(1-実効手数料率) - 仕入れ×数量 - 送料×注文件数
-    const totalProfit = hasCost
-      ? Math.round(e.totalSales*(1-effectiveFeeRate) - effectiveBuyPrice*e.qty - e.totalShipFee) : null;
+    // mab-商品はmabMapの粗利単価×数量を使う
+    const isMab = /^mab-/i.test(e.rawCode);
+    const mabProfit = isMab ? mabMap.get(e.rawCode.toLowerCase()) : null;
+
+    let unitProfit, totalProfit;
+    if(isMab && mabProfit !== undefined) {
+      unitProfit  = Math.round(mabProfit);
+      totalProfit = Math.round(mabProfit * e.qty);
+    } else {
+      const hasCost = effectiveBuyPrice!==null && avgSalesPrice!==null;
+      unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-effectiveFeeRate) - effectiveBuyPrice - shipFee) : null;
+      totalProfit = hasCost ? Math.round(e.totalSales*(1-effectiveFeeRate) - effectiveBuyPrice*e.qty - e.totalShipFee) : null;
+    }
 
     return {
       ...e,
       buyPrice: effectiveBuyPrice, shipFee, avgSalesPrice, unitProfit, totalProfit,
       feeRate: effectiveFeeRate,
+      isMab,
       isDiscount:     m ? m.isDiscount       : false,
       discountOrigPrice: m ? m.discountOrigPrice : null,
       onSale:         m ? m.onSale           : false,
