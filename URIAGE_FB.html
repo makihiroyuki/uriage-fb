@@ -115,6 +115,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .fbtn[data-f="MC"].active{background:var(--mc);color:#fff;border-color:var(--mc)}
 .fbtn[data-f="neg"].active{background:var(--accent2);color:#fff;border-color:var(--accent2)}
 .fbtn[data-f="ctc"].active{background:var(--accent3);color:#000;border-color:var(--accent3)}
+.fbtn[data-f="mab"].active{background:#c084fc;color:#000;border-color:#c084fc}
 .fbtn[data-f="disc"].active{background:rgba(240,192,64,.2);color:var(--accent);border-color:var(--accent)}
 
 .data-table{width:100%;border-collapse:collapse;font-size:14px}
@@ -347,6 +348,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
         <button class="fbtn" data-f="AZ" onclick="setFilter(this)" style="color:var(--az);border-color:rgba(74,158,255,.4)">Amazon</button>
         <button class="fbtn" data-f="AU" onclick="setFilter(this)" style="color:var(--au);border-color:rgba(0,184,160,.4)">AU PAY</button>
         <button class="fbtn" data-f="MC" onclick="setFilter(this)" style="color:var(--mc);border-color:rgba(255,64,64,.4)">メルカリ</button>
+        <button class="fbtn" data-f="mab" onclick="setFilter(this)" style="color:#c084fc;border-color:rgba(192,132,252,.4)">MAB</button>
         <button class="fbtn" data-f="neg" onclick="setFilter(this)" style="color:var(--accent2);border-color:rgba(224,80,80,.4)">⚠ マイナス</button>
         <button class="fbtn" data-f="disc" onclick="setFilter(this)" style="color:var(--accent);border-color:rgba(240,192,64,.4)">★ 値引き仕入れ</button>
       </div>
@@ -980,7 +982,7 @@ function applyPeriodAndRender() {
     : periodRows;
 
   const agg = aggregate(filteredRaw);
-  const filtered = (currentFilter==='neg'||currentFilter==='disc'||currentFilter==='ctc')
+  const filtered = (['neg','disc','ctc','mab'].includes(currentFilter))
     ? filterRows(agg, currentFilter) : agg;
 
   renderKPIs(filtered, filteredRaw.length);
@@ -1254,7 +1256,7 @@ function setFilter(btn) {
 
   const agg = aggregate(filteredRaw);
   // neg/disc/ctcはSKU単位のフィルター
-  const filtered = (currentFilter==='neg'||currentFilter==='disc'||currentFilter==='ctc')
+  const filtered = (['neg','disc','ctc','mab'].includes(currentFilter))
     ? filterRows(agg, currentFilter) : agg;
 
   displayData = sortRows(filtered);
@@ -1265,6 +1267,7 @@ function setFilter(btn) {
 function filterRows(agg, f) {
   if(f==='all') return agg;
   if(f==='ctc') return agg.filter(r => /^m-ctc/i.test(r.rawCode));
+  if(f==='mab') return agg.filter(r => /^mab-/i.test(r.rawCode));
   if(f==='RT'||f==='AZ'||f==='AU'||f==='MC') return agg.filter(r=>r.malls.has(f));
   if(f==='neg')  return agg.filter(r=>r.totalProfit!==null&&r.totalProfit<0);
   if(f==='disc') return agg.filter(r=>r.isDiscount);
