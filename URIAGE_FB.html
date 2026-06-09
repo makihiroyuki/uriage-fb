@@ -793,8 +793,8 @@ async function getAvailableYearMonths(rootId) {
 }
 
 // 指定年月のCSVを全モールから取得（onFileLoaded: 1ファイル読むたびに呼ばれる）
-async function loadYearMonth(rootId, year, month, onFileLoaded) {
-  allRows = [];
+async function loadYearMonth(rootId, year, month, onFileLoaded, appendMode) {
+  if(!appendMode) allRows = [];
   let loadedMalls = 0;
 
   for(const mallFolder of MALL_FOLDERS) {
@@ -903,6 +903,21 @@ async function refreshData() {
 async function loadAndRender(rootId, year, month) {
   setStatus('loading', `${year}年${parseInt(month,10)}月 を読み込み中...`);
   const loadedMalls = await loadYearMonth(rootId, year, month);
+
+  // 失速アラート用に先月・先々月も読み込む（allRowsに追加）
+  const d = new Date(parseInt(year), parseInt(month)-1, 1);
+  const months = [
+    new Date(d.getFullYear(), d.getMonth()-1, 1),
+    new Date(d.getFullYear(), d.getMonth()-2, 1),
+  ];
+  for(const md of months) {
+    const my = String(md.getFullYear());
+    const mm = String(md.getMonth()+1).padStart(2,'0');
+    try {
+      await loadYearMonth(rootId, my, mm, null, true); // true=追記モード
+    } catch(e) { /* 存在しない月はスキップ */ }
+  }
+
   setStatus('ok', `${year}年${parseInt(month,10)}月 — ${loadedMalls}モール / ${allRows.length}件 読み込み完了 — ${now()}`);
   applyPeriodAndRender();
   detectStallProducts();
@@ -1292,10 +1307,15 @@ function filterRows(agg, f) {
 
 function getFilteredRawRows() {
   const range = getPeriodDates(currentPeriod);
-  if(!range) return allRows;
+  let rows = allRows;
+  // MABフィルター以外はmab-商品を除外
+  if(currentFilter !== 'mab') {
+    rows = rows.filter(r => !/^mab-/i.test(String(r['商品コード']||'')));
+  }
+  if(!range) return rows;
   const fromStr = fmtDateInput(range.from);
   const toStr   = fmtDateInput(range.to);
-  return allRows.filter(r=>{
+  return rows.filter(r=>{
     const d = String(r['注文日']||'').substring(0,10);
     return d>=fromStr && d<=toStr;
   });
@@ -1541,6 +1561,12 @@ function openDetailFromStall(key) {
   renderModal();
   el('detail-modal').classList.add('open');
 }
+
+function openPriceChecker(code, name, myPrice) {
+  const base = 'https://makihiroyuki.github.io/uriage-fb/RAKUTEN_CHECKER.html';
+  const params = new URLSearchParams({ code, name, price: Math.round(myPrice||0) });
+  window.open(base + '?' + params.toString(), '_blank');
+}
 // ============================================================
 let modalData = [];
 let modalIndex = 0;
@@ -1605,7 +1631,12 @@ function renderModal() {
     ? `<span class="multi-badge" style="font-size:11px;padding:3px 8px">複数購入 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
   const negBadge = row.totalProfit!==null&&row.totalProfit<0
     ? `<span class="badge badge-neg" style="font-size:11px;padding:3px 8px">⚠ 粗利マイナス</span>` : '';
-  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge + linkHtml;
+  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge + linkHtml
+    + `<button onclick="openPriceChecker('${esc(row.rawCode)}','${esc(row.name.replace(/'/g,''))}',${row.avgSalesPrice||0})"
+        style="display:inline-flex;align-items:center;gap:5px;background:rgba(240,192,64,.15);border:1px solid rgba(240,192,64,.4);border-radius:5px;padding:4px 10px;font-size:11px;color:var(--accent);font-weight:700;cursor:pointer;transition:all .15s"
+        onmouseover="this.style.background='rgba(240,192,64,.3)'" onmouseout="this.style.background='rgba(240,192,64,.15)'">
+        💰 価格チェック
+      </button>`;
 
   // ランキング位置（モール別）でかく・クール
   const rankLines = [...row.malls].map(mall => {
