@@ -322,6 +322,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
       <select id="ym-select" onchange="onYmChange()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:12px;padding:5px 10px;outline:none;cursor:pointer">
       </select>
       <button class="btn-sm" onclick="refreshData()">↻ 更新</button>
+      <button class="btn-sm" id="stall-btn" onclick="openStallAlert()" style="display:none;border-color:rgba(240,192,64,.5);color:var(--accent)">⚠ 失速 <span id="stall-count">0</span>件</button>
       <button class="btn-sm" onclick="openCfgModal()">⚙ 設定</button>
     </div>
   </div>
@@ -371,6 +372,20 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
       </table>
     </div>
     <div id="no-data" class="no-data" style="display:none">条件に一致するデータがありません</div>
+  </div>
+</div>
+
+<!-- ===== STALL ALERT MODAL ===== -->
+<div class="modal-overlay" id="stall-modal">
+  <div class="modal" style="max-width:860px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">⚠ 失速商品アラート</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:4px">先月・先々月に売れていたのに今月0件の商品</div>
+      </div>
+      <button class="modal-close" onclick="closeStallModal()">✕</button>
+    </div>
+    <div class="modal-body" id="stall-body"></div>
   </div>
 </div>
 
@@ -890,6 +905,7 @@ async function loadAndRender(rootId, year, month) {
   const loadedMalls = await loadYearMonth(rootId, year, month);
   setStatus('ok', `${year}年${parseInt(month,10)}月 — ${loadedMalls}モール / ${allRows.length}件 読み込み完了 — ${now()}`);
   applyPeriodAndRender();
+  detectStallProducts();
 }
 
 function buildYmSelector(yms) {
@@ -1406,7 +1422,125 @@ function renderTable(data) {
 }
 
 // ============================================================
-// DETAIL MODAL（スライドとしても使用）
+// 失速アラート（先月・先々月1件以上 → 今月0件）
+// ============================================================
+function detectStallProducts() {
+  const today = new Date();
+  const cy = today.getFullYear();
+  const cm = today.getMonth(); // 0-indexed
+
+  // 今月・先月・先々月の範囲を計算
+  const thisMonthStr  = `${cy}-${String(cm+1).padStart(2,'0')}`;
+  const lastMonth     = new Date(cy, cm-1, 1);
+  const lastMonthStr  = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth()+1).padStart(2,'0')}`;
+  const prevMonth     = new Date(cy, cm-2, 1);
+  const prevMonthStr  = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth()+1).padStart(2,'0')}`;
+
+  // SKUごとに月別数量を集計
+  const skuMonthQty = new Map();
+  allRows.forEach(r => {
+    const code = String(r['商品コード']||'').trim();
+    const key  = codeToKey(code);
+    const date = String(r['注文日']||'').substring(0,7);
+    const qty  = toNum(r['数量'])||1;
+    const status = String(r['処理/出荷日']||r['処理/出荷ステータス']||'');
+    if(status.includes('キャンセル')) return;
+    if(!skuMonthQty.has(key)) skuMonthQty.set(key, {});
+    const m = skuMonthQty.get(key);
+    m[date] = (m[date]||0) + qty;
+  });
+
+  // 失速判定：先月or先々月に1以上 & 今月0
+  const stalled = [];
+  const aggAll = aggregate(allRows);
+  const skuMap = new Map(aggAll.map(r => [r.sku, r]));
+
+  skuMonthQty.forEach((months, key) => {
+    const lastQty = (months[lastMonthStr]||0) + (months[prevMonthStr]||0);
+    const thisQty = months[thisMonthStr]||0;
+    if(lastQty >= 1 && thisQty === 0) {
+      const row = skuMap.get(key);
+      stalled.push({
+        key, row,
+        lastQty,
+        lastMonthQty: months[lastMonthStr]||0,
+        prevMonthQty: months[prevMonthStr]||0,
+      });
+    }
+  });
+
+  // 先月の数量が多い順にソート
+  stalled.sort((a,b) => b.lastMonthQty - a.lastMonthQty);
+
+  // ボタン更新
+  const btn = el('stall-btn');
+  if(stalled.length > 0) {
+    btn.style.display = 'block';
+    setText('stall-count', stalled.length);
+  } else {
+    btn.style.display = 'none';
+  }
+
+  return { stalled, lastMonthStr, prevMonthStr, thisMonthStr };
+}
+
+function openStallAlert() {
+  const { stalled, lastMonthStr, prevMonthStr, thisMonthStr } = detectStallProducts();
+  if(!stalled.length) { alert('失速商品はありません'); return; }
+
+  let html = `<table class="detail-table" style="font-size:13px">
+    <thead><tr>
+      <th>#</th><th>商品名</th><th>商品コード</th>
+      <th class="num">${prevMonthStr} 数量</th>
+      <th class="num">${lastMonthStr} 数量</th>
+      <th class="num">${thisMonthStr} 数量</th>
+      <th class="num">仕入単価</th>
+      <th>在庫</th>
+    </tr></thead><tbody>`;
+
+  stalled.forEach(({key, row, lastMonthQty, prevMonthQty}, i) => {
+    const name     = row ? row.name : key;
+    const buyPrice = row ? row.buyPrice : null;
+    const rtInv    = row ? row.rtInv : null;
+    const azInv    = row ? row.azInv : null;
+    const rslInv   = row ? row.rslInv : null;
+    const nameColor = row && row.onSale ? 'color:var(--accent)' : '';
+    const inv = [['RT',rtInv],['AZ',azInv],['RSL',rslInv]].map(([l,v])=>
+      `<span class="inv-item"><span class="inv-l">${l} </span><span class="${v===0?'inv-z':'inv-v'}">${v===null?'—':v}</span></span>`
+    ).join('');
+    html += `<tr style="cursor:pointer" onclick="${row ? `openDetailFromStall('${key}')` : ''}">
+      <td>${i+1}</td>
+      <td style="${nameColor};max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--text3)">${esc(key)}</td>
+      <td class="num" style="color:var(--text2)">${prevMonthQty||'—'}</td>
+      <td class="num" style="color:var(--accent3);font-weight:700">${lastMonthQty||'—'}</td>
+      <td class="num" style="color:var(--accent2);font-weight:700">0</td>
+      <td class="num">¥${buyPrice!==null?fmt(buyPrice):'—'}</td>
+      <td>${inv}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+
+  el('stall-body').innerHTML = html;
+  el('stall-modal').classList.add('open');
+}
+
+function closeStallModal() { el('stall-modal').classList.remove('open'); }
+el('stall-modal') && el('stall-modal').addEventListener('click', e => {
+  if(e.target === el('stall-modal')) closeStallModal();
+});
+
+function openDetailFromStall(key) {
+  const aggAll = aggregate(allRows);
+  const idx = aggAll.findIndex(r => r.sku === key);
+  if(idx < 0) return;
+  closeStallModal();
+  modalData = aggAll;
+  modalIndex = idx;
+  isSlideMode = false;
+  renderModal();
+  el('detail-modal').classList.add('open');
+}
 // ============================================================
 let modalData = [];
 let modalIndex = 0;
