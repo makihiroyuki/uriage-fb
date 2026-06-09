@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>楽天 最安値クグリー</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Bebas+Neue&display=swap');
+
+:root {
+  --bg:#0a0c10; --surface:#111318; --surface2:#181c24; --surface3:#1e2330;
+  --border:#2e3444; --text:#f4f6ff; --text2:#b8c0d8; --text3:#7880a0;
+  --accent:#f0c040; --red:#e05050; --green:#40c8a0; --blue:#4a9eff;
+  --rt:#ff6b35;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh;font-size:14px}
+
+/* TOP BAR */
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:4px;color:var(--accent)}
+.top-stats{display:flex;gap:20px;font-size:12px;color:var(--text3)}
+.top-stats span{color:var(--text2)}
+
+/* SEARCH BAR */
+.search-wrap{padding:20px 24px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.search-input{flex:1;min-width:280px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;padding:10px 16px;outline:none;transition:border-color .15s}
+.search-input:focus{border-color:var(--accent)}
+.search-input::placeholder{color:var(--text3)}
+.btn{font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;padding:10px 20px;border-radius:8px;border:none;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#000}
+.btn-primary:hover{background:#ffd060}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-sm{background:var(--surface2);color:var(--text2);border:1px solid var(--border);padding:6px 14px;font-size:12px;border-radius:6px;cursor:pointer;transition:all .15s}
+.btn-sm:hover{border-color:var(--text2);color:var(--text)}
+.my-price-input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;padding:10px 16px;outline:none;width:140px;transition:border-color .15s}
+.my-price-input:focus{border-color:var(--blue)}
+
+/* FILTER BAR */
+.filter-bar{padding:12px 24px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.filter-label{font-size:11px;letter-spacing:1px;color:var(--text3);text-transform:uppercase}
+.fbtn{font-size:12px;padding:4px 13px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;transition:all .15s}
+.fbtn:hover{border-color:var(--text2);color:var(--text)}
+.fbtn.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
+.fbtn.done-btn.active{background:var(--surface3);color:var(--text3);border-color:var(--border)}
+
+/* PRODUCT LIST */
+.product-list{padding:16px 24px;display:flex;flex-direction:column;gap:2px}
+
+.product-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0;overflow:hidden;transition:border-color .15s}
+.product-card:hover{border-color:var(--border2, #3a4258)}
+.product-card.done{opacity:.45}
+.product-card.undercut{border-color:rgba(64,200,160,.4)}
+.product-card.danger{border-color:rgba(224,80,80,.4)}
+
+.card-header{display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer}
+.card-rank{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--text3);width:28px;flex-shrink:0}
+.card-name{flex:1;font-weight:600;font-size:14px;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.card-name.done-name{text-decoration:line-through;color:var(--text3)}
+.card-meta{display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.my-price-badge{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--text2)}
+.competitor-price{font-family:'Bebas Neue',sans-serif;font-size:22px}
+.competitor-price.cheaper{color:var(--red)}
+.competitor-price.same{color:var(--accent)}
+.competitor-price.pricier{color:var(--green)}
+.competitor-price.no-data{color:var(--text3);font-size:16px}
+.target-price{font-size:12px;background:rgba(240,192,64,.15);border:1px solid rgba(240,192,64,.3);border-radius:5px;padding:3px 10px;color:var(--accent);font-weight:700;white-space:nowrap}
+.badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;white-space:nowrap}
+.badge-undercut{background:rgba(64,200,160,.15);color:var(--green)}
+.badge-danger{background:rgba(224,80,80,.15);color:var(--red)}
+.badge-done{background:var(--surface3);color:var(--text3)}
+.badge-skip{background:rgba(120,128,160,.15);color:var(--text3)}
+
+/* EXPAND */
+.card-expand{border-top:1px solid var(--border);padding:14px 18px;display:none}
+.card-expand.open{display:block}
+.competitor-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.comp-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface2);border-radius:7px;font-size:12px}
+.comp-row.top{background:rgba(240,192,64,.07);border:1px solid rgba(240,192,64,.2)}
+.comp-rank{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--text3);width:20px}
+.comp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+.comp-price{font-family:'Bebas Neue',sans-serif;font-size:18px;font-weight:normal}
+.comp-price.cheap{color:var(--red)}
+.comp-price.ok{color:var(--green)}
+.comp-link{color:var(--blue);text-decoration:none;font-size:11px;flex-shrink:0}
+.comp-link:hover{text-decoration:underline}
+.action-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.loading-row{color:var(--text3);font-size:12px;padding:8px 0;display:flex;align-items:center;gap:8px}
+.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* EMPTY / STATUS */
+.empty{text-align:center;padding:60px 24px;color:var(--text3)}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty-title{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.status-bar{padding:6px 24px;font-size:12px;color:var(--text3);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--text3)}
+.dot.ok{background:var(--green)}
+.dot.loading{background:var(--accent);animation:pulse 1s infinite}
+.dot.err{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="logo">楽天 最安値クグリー</div>
+  <div class="top-stats">
+    チェック済み <span id="stat-done">0</span>件 ／
+    未チェック <span id="stat-todo">0</span>件 ／
+    要対応 <span id="stat-danger">0</span>件
+  </div>
+</div>
+
+<div class="search-wrap">
+  <input type="text" class="search-input" id="search-input" placeholder="商品名を入力（例：アイリスオーヤマ マスク 100枚）">
+  <input type="number" class="my-price-input" id="my-price-input" placeholder="自社価格 ¥">
+  <button class="btn btn-primary" id="search-btn" onclick="searchProduct()">検索</button>
+  <button class="btn-sm" onclick="loadList()">↻ リスト更新</button>
+  <button class="btn-sm" onclick="clearDone()">✓ 完了済みを削除</button>
+</div>
+
+<div class="filter-bar">
+  <span class="filter-label">表示:</span>
+  <button class="fbtn active" data-f="all" onclick="setFilter(this)">すべて</button>
+  <button class="fbtn" data-f="danger" onclick="setFilter(this)" style="color:var(--red);border-color:rgba(224,80,80,.4)">⚠ 要対応</button>
+  <button class="fbtn" data-f="todo" onclick="setFilter(this)" style="color:var(--accent);border-color:rgba(240,192,64,.4)">未チェック</button>
+  <button class="fbtn done-btn" data-f="done" onclick="setFilter(this)">完了済み</button>
+</div>
+
+<div class="status-bar">
+  <div class="dot ok" id="status-dot"></div>
+  <span id="status-text">リストを読み込んでいます...</span>
+</div>
+
+<div class="product-list" id="product-list">
+  <div class="empty">
+    <div class="empty-icon">🔍</div>
+    <div class="empty-title">商品を検索して追加</div>
+    <div>上の検索欄に商品名と自社価格を入力してください</div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const APP_ID = '52a8ccd2-4bfc-4ff6-b39c-cb161559fca1';
+const STORAGE_KEY = 'rakuten_checker_v1';
+
+// ============================================================
+// STATE
+// ============================================================
+let products = []; // { id, name, myPrice, competitors, status, addedAt, checkedAt }
+let currentFilter = 'all';
+
+// ============================================================
+// STORAGE
+// ============================================================
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(products)); } catch(e){}
+}
+function load() {
+  try {
+    const d = localStorage.getItem(STORAGE_KEY);
+    if(d) products = JSON.parse(d);
+  } catch(e){ products = []; }
+}
+
+// ============================================================
+// RAKUTEN API
+// ============================================================
+async function searchRakuten(keyword, myPrice) {
+  const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?`
+    + `applicationId=${APP_ID}`
+    + `&keyword=${encodeURIComponent(keyword)}`
+    + `&hits=10`
+    + `&sort=+itemPrice`
+    + `&availability=1`
+    + `&format=json`;
+
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('楽天API エラー: ' + res.status);
+  const data = await res.json();
+  if(data.error) throw new Error(data.error_description || data.error);
+
+  const items = (data.Items || []).map(i => ({
+    name:     i.Item.itemName,
+    price:    i.Item.itemPrice,
+    shop:     i.Item.shopName,
+    url:      i.Item.itemUrl,
+    imageUrl: i.Item.mediumImageUrls?.[0]?.imageUrl || '',
+  }));
+
+  return items;
+}
+
+// ============================================================
+// SEARCH & ADD
+// ============================================================
+async function searchProduct() {
+  const keyword  = document.getElementById('search-input').value.trim();
+  const myPrice  = parseInt(document.getElementById('my-price-input').value)||0;
+  if(!keyword) { alert('商品名を入力してください'); return; }
+
+  const btn = document.getElementById('search-btn');
+  btn.disabled = true;
+  btn.textContent = '検索中...';
+  setStatus('loading', `「${keyword}」を検索中...`);
+
+  try {
+    const competitors = await searchRakuten(keyword, myPrice);
+
+    // 既存に同名があれば更新、なければ追加
+    const existing = products.find(p => p.name === keyword);
+    if(existing) {
+      existing.competitors = competitors;
+      existing.myPrice = myPrice || existing.myPrice;
+      existing.checkedAt = Date.now();
+    } else {
+      products.unshift({
+        id: Date.now(),
+        name: keyword,
+        myPrice,
+        competitors,
+        status: 'todo', // todo / done / skip
+        addedAt: Date.now(),
+        checkedAt: Date.now(),
+      });
+    }
+
+    save();
+    renderList();
+    setStatus('ok', `「${keyword}」の競合 ${competitors.length}件 取得完了`);
+    document.getElementById('search-input').value = '';
+    document.getElementById('my-price-input').value = '';
+
+    // 一番上のカードを自動展開
+    setTimeout(() => toggleExpand(products[0].id, true), 100);
+
+  } catch(err) {
+    setStatus('err', 'エラー: ' + err.message);
+    alert('楽天API エラー: ' + err.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '検索';
+}
+
+// Enterキーで検索
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if(e.key === 'Enter') searchProduct();
+});
+
+// ============================================================
+// FILTER & RENDER
+// ============================================================
+function setFilter(btn) {
+  currentFilter = btn.dataset.f;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderList();
+}
+
+function getFilteredProducts() {
+  if(currentFilter === 'all')    return products;
+  if(currentFilter === 'done')   return products.filter(p => p.status === 'done');
+  if(currentFilter === 'todo')   return products.filter(p => p.status === 'todo');
+  if(currentFilter === 'danger') return products.filter(p => isDanger(p));
+  return products;
+}
+
+function isDanger(p) {
+  if(!p.competitors || !p.competitors.length || !p.myPrice) return false;
+  const cheapest = p.competitors.filter(c => c.price > 0)[0];
+  return cheapest && cheapest.price < p.myPrice;
+}
+
+function getTargetPrice(p) {
+  if(!p.competitors || !p.myPrice) return null;
+  const cheapest = p.competitors.filter(c => c.price > 0)[0];
+  if(!cheapest) return null;
+  return cheapest.price - 1;
+}
+
+function renderList() {
+  const list = document.getElementById('product-list');
+  const filtered = getFilteredProducts();
+
+  updateStats();
+
+  if(!filtered.length) {
+    list.innerHTML = `<div class="empty">
+      <div class="empty-icon">📋</div>
+      <div class="empty-title">${currentFilter === 'done' ? 'チェック済みはありません' : currentFilter === 'danger' ? '要対応商品はありません' : '商品がありません'}</div>
+      <div>上の検索欄から商品を追加してください</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map((p, i) => {
+    const cheapest    = p.competitors?.filter(c => c.price > 0)[0];
+    const targetPrice = getTargetPrice(p);
+    const danger      = isDanger(p);
+    const isDone      = p.status === 'done';
+
+    let priceDisplay = '';
+    let priceBadge   = '';
+    if(cheapest && p.myPrice) {
+      const diff = cheapest.price - p.myPrice;
+      if(diff < 0) {
+        priceDisplay = `<span class="competitor-price cheaper">¥${fmt(cheapest.price)}</span>`;
+        priceBadge   = `<span class="badge badge-danger">⚠ ${Math.abs(diff)}円安い</span>`;
+      } else if(diff === 0) {
+        priceDisplay = `<span class="competitor-price same">¥${fmt(cheapest.price)}</span>`;
+        priceBadge   = `<span class="badge badge-undercut">同額</span>`;
+      } else {
+        priceDisplay = `<span class="competitor-price pricier">¥${fmt(cheapest.price)}</span>`;
+        priceBadge   = `<span class="badge badge-undercut">+${fmt(diff)}円高い</span>`;
+      }
+    } else if(!p.myPrice) {
+      priceDisplay = `<span class="competitor-price no-data">価格未設定</span>`;
+    } else {
+      priceDisplay = `<span class="competitor-price no-data">取得中</span>`;
+    }
+
+    const cardClass = ['product-card',
+      isDone ? 'done' : '',
+      danger && !isDone ? 'danger' : '',
+      !danger && cheapest && !isDone ? 'undercut' : ''
+    ].filter(Boolean).join(' ');
+
+    return `<div class="${cardClass}" id="card-${p.id}">
+      <div class="card-header" onclick="toggleExpand(${p.id})">
+        <div class="card-rank">${i+1}</div>
+        <div class="card-name ${isDone ? 'done-name' : ''}">${esc(p.name)}</div>
+        <div class="card-meta">
+          ${p.myPrice ? `<div class="my-price-badge">自 ¥${fmt(p.myPrice)}</div>` : ''}
+          ${priceDisplay}
+          ${targetPrice !== null && !isDone ? `<div class="target-price">→ ¥${fmt(targetPrice)}</div>` : ''}
+          ${priceBadge}
+          ${isDone ? '<span class="badge badge-done">✓ 完了</span>' : ''}
+        </div>
+      </div>
+      <div class="card-expand" id="expand-${p.id}">
+        <div class="competitor-list" id="comp-${p.id}">
+          ${renderCompetitors(p)}
+        </div>
+        <div class="action-row">
+          ${!isDone ? `<button class="btn btn-primary" onclick="markDone(${p.id})">✓ 対応完了</button>` : ''}
+          ${isDone ? `<button class="btn-sm" onclick="markTodo(${p.id})">↩ 未完了に戻す</button>` : ''}
+          <button class="btn-sm" onclick="recheckProduct(${p.id})">↻ 再検索</button>
+          <button class="btn-sm" style="color:var(--red);border-color:rgba(224,80,80,.4)" onclick="removeProduct(${p.id})">削除</button>
+          ${p.myPrice ? `<span style="font-size:11px;color:var(--text3)">追加: ${new Date(p.addedAt).toLocaleDateString('ja-JP')}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCompetitors(p) {
+  if(!p.competitors || !p.competitors.length) {
+    return `<div class="loading-row"><div class="spinner"></div>取得中...</div>`;
+  }
+  return p.competitors.slice(0,8).map((c, i) => {
+    const isTop   = i === 0;
+    const cheaper = p.myPrice && c.price < p.myPrice;
+    return `<div class="comp-row ${isTop ? 'top' : ''}">
+      <div class="comp-rank">${i+1}</div>
+      <div class="comp-name" title="${esc(c.name)}">${esc(c.shop)}</div>
+      <div class="comp-price ${cheaper ? 'cheap' : 'ok'}">¥${fmt(c.price)}</div>
+      <a href="${esc(c.url)}" target="_blank" class="comp-link">開く →</a>
+    </div>`;
+  }).join('');
+}
+
+function toggleExpand(id, forceOpen) {
+  const el = document.getElementById(`expand-${id}`);
+  if(!el) return;
+  const isOpen = el.classList.contains('open');
+  if(forceOpen || !isOpen) el.classList.add('open');
+  else el.classList.remove('open');
+}
+
+// ============================================================
+// ACTIONS
+// ============================================================
+function markDone(id) {
+  const p = products.find(p => p.id === id);
+  if(p) { p.status = 'done'; p.checkedAt = Date.now(); save(); renderList(); }
+}
+
+function markTodo(id) {
+  const p = products.find(p => p.id === id);
+  if(p) { p.status = 'todo'; save(); renderList(); }
+}
+
+function removeProduct(id) {
+  products = products.filter(p => p.id !== id);
+  save(); renderList();
+}
+
+function clearDone() {
+  if(!confirm('完了済みをすべて削除しますか？')) return;
+  products = products.filter(p => p.status !== 'done');
+  save(); renderList();
+}
+
+async function recheckProduct(id) {
+  const p = products.find(p => p.id === id);
+  if(!p) return;
+  const compEl = document.getElementById(`comp-${id}`);
+  if(compEl) compEl.innerHTML = `<div class="loading-row"><div class="spinner"></div>再検索中...</div>`;
+  setStatus('loading', `「${p.name}」を再検索中...`);
+  try {
+    p.competitors = await searchRakuten(p.name, p.myPrice);
+    p.checkedAt = Date.now();
+    save(); renderList();
+    toggleExpand(id, true);
+    setStatus('ok', '再検索完了');
+  } catch(err) {
+    setStatus('err', 'エラー: ' + err.message);
+  }
+}
+
+// ============================================================
+// STATS
+// ============================================================
+function updateStats() {
+  const done   = products.filter(p => p.status === 'done').length;
+  const todo   = products.filter(p => p.status === 'todo').length;
+  const danger = products.filter(p => isDanger(p) && p.status !== 'done').length;
+  document.getElementById('stat-done').textContent   = done;
+  document.getElementById('stat-todo').textContent   = todo;
+  document.getElementById('stat-danger').textContent = danger;
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function fmt(n) { return Math.round(n).toLocaleString('ja-JP'); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function setStatus(state, msg) {
+  const dot = document.getElementById('status-dot');
+  dot.className = 'dot' + (state==='ok'?' ok':state==='loading'?' loading':state==='err'?' err':'');
+  document.getElementById('status-text').textContent = msg;
+}
+function loadList() { load(); renderList(); setStatus('ok', `${products.length}件のリストを読み込みました`); }
+
+// ============================================================
+// INIT
+// ============================================================
+load();
+renderList();
+setStatus('ok', products.length > 0 ? `${products.length}件のリストを読み込みました` : '商品を検索して追加してください');
+</script>
+</body>
+</html>
