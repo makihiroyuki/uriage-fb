@@ -151,6 +151,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 // CONFIG
 // ============================================================
 const APP_ID = '52a8ccd2-4bfc-4ff6-b39c-cb161559fca1';
+const ACCESS_KEY = 'pk_TTphDiNuNpZ0Yt4114U9Gpa3U8TUBCbcOpmtQQsetl3';
 const STORAGE_KEY = 'rakuten_checker_v1';
 
 // ============================================================
@@ -178,6 +179,7 @@ function load() {
 async function searchRakuten(keyword, myPrice) {
   const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?`
     + `applicationId=${APP_ID}`
+    + `&accessKey=${ACCESS_KEY}`
     + `&keyword=${encodeURIComponent(keyword)}`
     + `&hits=10`
     + `&sort=+itemPrice`
