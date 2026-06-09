@@ -3,104 +3,81 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>楽天 最安値クグリー</title>
+<title>楽天 価格チェッカー</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Bebas+Neue&display=swap');
-
-:root {
-  --bg:#0a0c10; --surface:#111318; --surface2:#181c24; --surface3:#1e2330;
-  --border:#2e3444; --text:#f4f6ff; --text2:#b8c0d8; --text3:#7880a0;
-  --accent:#f0c040; --red:#e05050; --green:#40c8a0; --blue:#4a9eff;
-  --rt:#ff6b35;
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Bebas+Neue&display=swap');
+:root{
+  --bg:#0a0c10;--surface:#111318;--surface2:#181c24;--border:#2e3444;
+  --text:#f4f6ff;--text2:#b8c0d8;--text3:#7880a0;
+  --accent:#f0c040;--red:#e05050;--green:#40c8a0;--blue:#4a9eff;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh;font-size:14px}
 
-/* TOP BAR */
 .top-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
-.logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:4px;color:var(--accent)}
-.top-stats{display:flex;gap:20px;font-size:12px;color:var(--text3)}
-.top-stats span{color:var(--text2)}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:4px;color:var(--accent)}
+.product-info{font-size:12px;color:var(--text3)}
+.product-name-display{font-size:14px;font-weight:700;color:var(--text2);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* SEARCH BAR */
-.search-wrap{padding:20px 24px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.search-input{flex:1;min-width:280px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;padding:10px 16px;outline:none;transition:border-color .15s}
-.search-input:focus{border-color:var(--accent)}
-.search-input::placeholder{color:var(--text3)}
+.main{padding:24px;max-width:800px;margin:0 auto}
+
+.section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:16px}
+.section-title{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:14px}
+
+/* ステップ */
+.step{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+.step-num{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--accent);line-height:1;flex-shrink:0;width:28px}
+.step-body{flex:1}
+.step-label{font-size:13px;font-weight:600;margin-bottom:8px}
+.step-desc{font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.7}
+
+/* URL入力 */
+.url-row{display:flex;gap:8px}
+.url-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:12px;padding:9px 14px;outline:none;transition:border-color .15s}
+.url-input:focus{border-color:var(--accent)}
+.url-input::placeholder{color:var(--text3)}
+
+/* 価格入力 */
+.price-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.price-field{display:flex;flex-direction:column;gap:5px}
+.price-field label{font-size:11px;letter-spacing:1px;color:var(--text3)}
+.price-input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:18px;font-weight:700;padding:9px 14px;outline:none;width:130px;transition:border-color .15s}
+.price-input:focus{border-color:var(--blue)}
+
+/* ターゲット価格 */
+.target-display{background:rgba(240,192,64,.08);border:1px solid rgba(240,192,64,.3);border-radius:10px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.target-label{font-size:11px;letter-spacing:1px;color:var(--text3);text-transform:uppercase}
+.target-price{font-family:'Bebas Neue',sans-serif;font-size:42px;color:var(--accent);letter-spacing:1px;line-height:1}
+.target-desc{font-size:12px;color:var(--text2)}
+
+/* ボタン */
 .btn{font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;padding:10px 20px;border-radius:8px;border:none;cursor:pointer;transition:all .15s;white-space:nowrap}
 .btn-primary{background:var(--accent);color:#000}
-.btn-primary:hover{background:#ffd060}
-.btn-primary:disabled{opacity:.4;cursor:not-allowed}
-.btn-sm{background:var(--surface2);color:var(--text2);border:1px solid var(--border);padding:6px 14px;font-size:12px;border-radius:6px;cursor:pointer;transition:all .15s}
-.btn-sm:hover{border-color:var(--text2);color:var(--text)}
-.my-price-input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;padding:10px 16px;outline:none;width:140px;transition:border-color .15s}
-.my-price-input:focus{border-color:var(--blue)}
+.btn-primary:hover{background:#ffd060;transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--text2);color:var(--text)}
+.btn-danger{background:rgba(224,80,80,.15);color:var(--red);border:1px solid rgba(224,80,80,.3)}
+.btn-open{background:rgba(74,158,255,.15);color:var(--blue);border:1px solid rgba(74,158,255,.3);font-size:13px;padding:9px 18px;border-radius:8px;cursor:pointer;transition:all .15s;font-weight:700}
+.btn-open:hover{background:rgba(74,158,255,.3)}
 
-/* FILTER BAR */
-.filter-bar{padding:12px 24px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--border);flex-wrap:wrap}
-.filter-label{font-size:11px;letter-spacing:1px;color:var(--text3);text-transform:uppercase}
-.fbtn{font-size:12px;padding:4px 13px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;transition:all .15s}
-.fbtn:hover{border-color:var(--text2);color:var(--text)}
-.fbtn.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
-.fbtn.done-btn.active{background:var(--surface3);color:var(--text3);border-color:var(--border)}
+/* 記憶済みURL */
+.saved-url-display{background:var(--surface2);border:1px solid var(--green);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--green);display:flex;align-items:center;gap:8px;word-break:break-all;line-height:1.5}
+.saved-url-display .url-text{flex:1;color:var(--text2)}
 
-/* PRODUCT LIST */
-.product-list{padding:16px 24px;display:flex;flex-direction:column;gap:2px}
+/* ログ */
+.log-table{width:100%;border-collapse:collapse;font-size:12px}
+.log-table th{text-align:left;padding:8px 10px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)}
+.log-table td{padding:8px 10px;border-bottom:1px solid rgba(46,52,68,.5);color:var(--text2)}
+.log-table tr:last-child td{border-bottom:none}
+.log-empty{text-align:center;padding:32px;color:var(--text3);font-size:13px}
 
-.product-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0;overflow:hidden;transition:border-color .15s}
-.product-card:hover{border-color:var(--border2, #3a4258)}
-.product-card.done{opacity:.45}
-.product-card.undercut{border-color:rgba(64,200,160,.4)}
-.product-card.danger{border-color:rgba(224,80,80,.4)}
-
-.card-header{display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer}
-.card-rank{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--text3);width:28px;flex-shrink:0}
-.card-name{flex:1;font-weight:600;font-size:14px;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.card-name.done-name{text-decoration:line-through;color:var(--text3)}
-.card-meta{display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
-.my-price-badge{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--text2)}
-.competitor-price{font-family:'Bebas Neue',sans-serif;font-size:22px}
-.competitor-price.cheaper{color:var(--red)}
-.competitor-price.same{color:var(--accent)}
-.competitor-price.pricier{color:var(--green)}
-.competitor-price.no-data{color:var(--text3);font-size:16px}
-.target-price{font-size:12px;background:rgba(240,192,64,.15);border:1px solid rgba(240,192,64,.3);border-radius:5px;padding:3px 10px;color:var(--accent);font-weight:700;white-space:nowrap}
-.badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;white-space:nowrap}
-.badge-undercut{background:rgba(64,200,160,.15);color:var(--green)}
-.badge-danger{background:rgba(224,80,80,.15);color:var(--red)}
-.badge-done{background:var(--surface3);color:var(--text3)}
-.badge-skip{background:rgba(120,128,160,.15);color:var(--text3)}
-
-/* EXPAND */
-.card-expand{border-top:1px solid var(--border);padding:14px 18px;display:none}
-.card-expand.open{display:block}
-.competitor-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-.comp-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface2);border-radius:7px;font-size:12px}
-.comp-row.top{background:rgba(240,192,64,.07);border:1px solid rgba(240,192,64,.2)}
-.comp-rank{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--text3);width:20px}
-.comp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
-.comp-price{font-family:'Bebas Neue',sans-serif;font-size:18px;font-weight:normal}
-.comp-price.cheap{color:var(--red)}
-.comp-price.ok{color:var(--green)}
-.comp-link{color:var(--blue);text-decoration:none;font-size:11px;flex-shrink:0}
-.comp-link:hover{text-decoration:underline}
-.action-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.loading-row{color:var(--text3);font-size:12px;padding:8px 0;display:flex;align-items:center;gap:8px}
-.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-/* EMPTY / STATUS */
-.empty{text-align:center;padding:60px 24px;color:var(--text3)}
-.empty-icon{font-size:48px;margin-bottom:12px}
-.empty-title{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:6px}
-.status-bar{padding:6px 24px;font-size:12px;color:var(--text3);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
-.dot{width:6px;height:6px;border-radius:50%;background:var(--text3)}
+/* status */
+.status-bar{padding:6px 24px;font-size:12px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;color:var(--text3)}
+.dot{width:6px;height:6px;border-radius:50%}
 .dot.ok{background:var(--green)}
-.dot.loading{background:var(--accent);animation:pulse 1s infinite}
-.dot.err{background:var(--red)}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.dot.warn{background:var(--accent)}
 
-/* SCROLLBAR */
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
@@ -109,428 +86,284 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 <body>
 
 <div class="top-bar">
-  <div class="logo">楽天 最安値クグリー</div>
-  <div class="top-stats">
-    チェック済み <span id="stat-done">0</span>件 ／
-    未チェック <span id="stat-todo">0</span>件 ／
-    要対応 <span id="stat-danger">0</span>件
+  <div class="logo">価格チェッカー</div>
+  <div>
+    <div class="product-name-display" id="product-name-display">— 商品未選択 —</div>
+    <div class="product-info" id="product-code-display"></div>
   </div>
-</div>
-
-<div class="search-wrap">
-  <input type="text" class="search-input" id="search-input" placeholder="商品名を入力（例：アイリスオーヤマ マスク 100枚）">
-  <input type="number" class="my-price-input" id="my-price-input" placeholder="自社価格 ¥">
-  <button class="btn btn-primary" id="search-btn" onclick="searchProduct()">検索</button>
-  <button class="btn-sm" onclick="loadList()">↻ リスト更新</button>
-  <button class="btn-sm" onclick="clearDone()">✓ 完了済みを削除</button>
-</div>
-
-<div class="filter-bar">
-  <span class="filter-label">表示:</span>
-  <button class="fbtn active" data-f="all" onclick="setFilter(this)">すべて</button>
-  <button class="fbtn" data-f="danger" onclick="setFilter(this)" style="color:var(--red);border-color:rgba(224,80,80,.4)">⚠ 要対応</button>
-  <button class="fbtn" data-f="todo" onclick="setFilter(this)" style="color:var(--accent);border-color:rgba(240,192,64,.4)">未チェック</button>
-  <button class="fbtn done-btn" data-f="done" onclick="setFilter(this)">完了済み</button>
 </div>
 
 <div class="status-bar">
   <div class="dot ok" id="status-dot"></div>
-  <span id="status-text">リストを読み込んでいます...</span>
+  <span id="status-text">URIAGE FBから商品を開いてください</span>
 </div>
 
-<div class="product-list" id="product-list">
-  <div class="empty">
-    <div class="empty-icon">🔍</div>
-    <div class="empty-title">商品を検索して追加</div>
-    <div>上の検索欄に商品名と自社価格を入力してください</div>
+<div class="main">
+
+  <!-- STEP 1: 楽天で検索 -->
+  <div class="section">
+    <div class="section-title">Step 1 — 楽天で検索してURLを記憶</div>
+
+    <div id="saved-url-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:11px;letter-spacing:1px;color:var(--green);margin-bottom:8px">✓ 記憶済み検索URL</div>
+      <div class="saved-url-display">
+        <span class="url-text" id="saved-url-text"></span>
+        <button class="btn-open" onclick="openSavedUrl()" id="open-saved-btn">開く →</button>
+        <button class="btn btn-danger" style="padding:6px 12px;font-size:11px" onclick="clearSavedUrl()">削除</button>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-label">楽天市場で競合を検索する</div>
+        <div class="step-desc">下のボタンで楽天市場が開きます。自分でキーワードを入力して競合商品を見つけてください。</div>
+        <button class="btn-open" onclick="openRakutenSearch()">🔍 楽天市場を開く</button>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-label">検索結果のURLを貼り付けて記憶する</div>
+        <div class="step-desc">「これだ！」という検索結果ページのURLをブラウザのアドレスバーからコピーして貼り付け。次回から自動で開きます。</div>
+        <div class="url-row">
+          <input type="text" class="url-input" id="url-input" placeholder="https://search.rakuten.co.jp/search/mall/...">
+          <button class="btn btn-primary" onclick="saveUrl()">記憶する</button>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
+
+  <!-- STEP 2: 価格入力 -->
+  <div class="section">
+    <div class="section-title">Step 2 — 競合価格を入力</div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-label">楽天市場で確認した2番手の価格を入力</div>
+        <div class="price-row">
+          <div class="price-field">
+            <label>自社現在価格</label>
+            <input type="number" class="price-input" id="my-price" placeholder="¥0" oninput="calcTarget()">
+          </div>
+          <div class="price-field">
+            <label>競合2番手価格</label>
+            <input type="number" class="price-input" id="competitor-price" placeholder="¥0" oninput="calcTarget()">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TARGET PRICE -->
+  <div class="target-display" id="target-section" style="display:none;margin-bottom:16px">
+    <div>
+      <div class="target-label">推奨設定価格（2番手 − 1円）</div>
+      <div class="target-price" id="target-price">¥—</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+      <div class="target-desc" id="target-desc"></div>
+      <button class="btn btn-primary" id="log-btn" onclick="logChange()" style="font-size:15px;padding:12px 28px">✓ この価格に変更した</button>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div class="section">
+    <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>価格変更ログ</span>
+      <button class="btn btn-danger" style="font-size:11px;padding:4px 10px" onclick="clearLog()">ログ削除</button>
+    </div>
+    <div id="log-area">
+      <div class="log-empty">まだ価格変更の記録がありません</div>
+    </div>
+  </div>
+
+</div><!-- /main -->
 
 <script>
-// ============================================================
-// CONFIG
-// ============================================================
-const APP_ID = '52a8ccd2-4bfc-4ff6-b39c-cb161559fca1';
-const ACCESS_KEY = 'pk_TTphDiNuNpZ0Yt4114U9Gpa3U8TUBCbcOpmtQQsetl3';
-const STORAGE_KEY = 'rakuten_checker_v1';
-const KEYWORD_MAP_KEY = 'rakuten_keyword_map_v1'; // 商品コード→検索ワード
-const PRICE_LOG_KEY   = 'rakuten_price_log_v1';   // 価格変更ログ
+const KEYWORD_MAP_KEY = 'rk_url_map_v1';   // 商品コード→楽天検索URL
+const PRICE_LOG_KEY   = 'rk_price_log_v1'; // 価格変更ログ
 
-function saveKeyword(code, keyword) {
-  if(!code || !keyword) return;
-  try {
-    const map = JSON.parse(localStorage.getItem(KEYWORD_MAP_KEY)||'{}');
-    map[code] = keyword;
-    localStorage.setItem(KEYWORD_MAP_KEY, JSON.stringify(map));
-  } catch(e){}
-}
-
-function loadKeyword(code) {
-  try {
-    const map = JSON.parse(localStorage.getItem(KEYWORD_MAP_KEY)||'{}');
-    return map[code] || null;
-  } catch(e){ return null; }
-}
-
-function savePriceLog(code, name, oldPrice, newPrice, competitor) {
-  try {
-    const logs = JSON.parse(localStorage.getItem(PRICE_LOG_KEY)||'[]');
-    logs.unshift({ code, name, oldPrice, newPrice, competitor, date: new Date().toISOString() });
-    localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(logs.slice(0,500)));
-  } catch(e){}
-}
+let currentCode  = '';
+let currentName  = '';
+let currentPrice = 0;
+let savedUrl     = '';
 
 // ============================================================
-// STATE
+// INIT — URLパラメータ受け取り
 // ============================================================
-let products = []; // { id, name, myPrice, competitors, status, addedAt, checkedAt }
-let currentFilter = 'all';
+window.addEventListener('DOMContentLoaded', () => {
+  const p = new URLSearchParams(location.search);
+  currentCode  = p.get('code')  || '';
+  currentName  = p.get('name')  || '';
+  currentPrice = parseInt(p.get('price')||'0') || 0;
 
-// ============================================================
-// STORAGE
-// ============================================================
-function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(products)); } catch(e){}
-}
-function load() {
-  try {
-    const d = localStorage.getItem(STORAGE_KEY);
-    if(d) products = JSON.parse(d);
-  } catch(e){ products = []; }
-}
-
-// ============================================================
-// RAKUTEN API
-// ============================================================
-async function searchRakuten(keyword, myPrice) {
-  const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?`
-    + `applicationId=${APP_ID}`
-    + `&accessKey=${ACCESS_KEY}`
-    + `&keyword=${encodeURIComponent(keyword)}`
-    + `&hits=10`
-    + `&sort=%2BitemPrice`
-    + `&availability=1`
-    + `&format=json`;
-
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('楽天API エラー: ' + res.status);
-  const data = await res.json();
-  if(data.error) throw new Error(data.error_description || data.error);
-
-  const items = (data.Items || []).map(i => ({
-    name:     i.Item.itemName,
-    price:    i.Item.itemPrice,
-    shop:     i.Item.shopName,
-    url:      i.Item.itemUrl,
-    imageUrl: i.Item.mediumImageUrls?.[0]?.imageUrl || '',
-  }));
-
-  return items;
-}
-
-// ============================================================
-// SEARCH & ADD
-// ============================================================
-async function searchProduct() {
-  const keyword  = document.getElementById('search-input').value.trim();
-  const myPrice  = parseInt(document.getElementById('my-price-input').value)||0;
-  if(!keyword) { alert('商品名を入力してください'); return; }
-
-  const btn = document.getElementById('search-btn');
-  btn.disabled = true;
-  btn.textContent = '検索中...';
-  setStatus('loading', `「${keyword}」を検索中...`);
-
-  try {
-    const competitors = await searchRakuten(keyword, myPrice);
-    const currentCode = document.getElementById('search-input').dataset.code || paramCode || '';
-    if(currentCode) saveKeyword(currentCode, keyword);
-
-    // 既存に同名があれば更新、なければ追加
-    const existing = products.find(p => p.name === keyword);
-    if(existing) {
-      existing.competitors = competitors;
-      existing.myPrice = myPrice || existing.myPrice;
-      existing.checkedAt = Date.now();
-    } else {
-      products.unshift({
-        id: Date.now(),
-        name: keyword,
-        myPrice,
-        competitors,
-        status: 'todo', // todo / done / skip
-        addedAt: Date.now(),
-        checkedAt: Date.now(),
-      });
-    }
-
-    save();
-    renderList();
-    setStatus('ok', `「${keyword}」の競合 ${competitors.length}件 取得完了`);
-    document.getElementById('search-input').value = '';
-    document.getElementById('my-price-input').value = '';
-
-    // 一番上のカードを自動展開
-    setTimeout(() => toggleExpand(products[0].id, true), 100);
-
-  } catch(err) {
-    setStatus('err', 'エラー: ' + err.message);
-    alert('楽天API エラー: ' + err.message);
+  if(currentName) {
+    el('product-name-display').textContent = currentName;
+    el('product-code-display').textContent = currentCode;
+    el('my-price').value = currentPrice || '';
+    calcTarget();
+    setStatus('ok', `「${currentName}」の価格チェック`);
   }
 
-  btn.disabled = false;
-  btn.textContent = '検索';
-}
+  // 記憶済みURLを確認
+  if(currentCode) {
+    const map = loadMap();
+    savedUrl = map[currentCode] || '';
+    if(savedUrl) showSavedUrl();
+  }
 
-// Enterキーで検索
-document.getElementById('search-input').addEventListener('keydown', e => {
-  if(e.key === 'Enter') searchProduct();
+  renderLog();
 });
 
 // ============================================================
-// FILTER & RENDER
+// URL記憶
 // ============================================================
-function setFilter(btn) {
-  currentFilter = btn.dataset.f;
-  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderList();
+function loadMap() {
+  try{ return JSON.parse(localStorage.getItem(KEYWORD_MAP_KEY)||'{}'); }catch(e){ return {}; }
+}
+function saveMap(map) {
+  try{ localStorage.setItem(KEYWORD_MAP_KEY, JSON.stringify(map)); }catch(e){}
 }
 
-function getFilteredProducts() {
-  if(currentFilter === 'all')    return products;
-  if(currentFilter === 'done')   return products.filter(p => p.status === 'done');
-  if(currentFilter === 'todo')   return products.filter(p => p.status === 'todo');
-  if(currentFilter === 'danger') return products.filter(p => isDanger(p));
-  return products;
+function saveUrl() {
+  const url = el('url-input').value.trim();
+  if(!url) { alert('URLを入力してください'); return; }
+  if(!url.startsWith('http')) { alert('正しいURLを入力してください'); return; }
+  if(!currentCode) {
+    // コードなしの場合は名前をキーにする
+    const map = loadMap();
+    map['__' + currentName] = url;
+    saveMap(map);
+  } else {
+    const map = loadMap();
+    map[currentCode] = url;
+    saveMap(map);
+  }
+  savedUrl = url;
+  showSavedUrl();
+  el('url-input').value = '';
+  setStatus('ok', '検索URLを記憶しました！次回から自動で開きます');
 }
 
-function isDanger(p) {
-  if(!p.competitors || !p.competitors.length || !p.myPrice) return false;
-  const cheapest = p.competitors.filter(c => c.price > 0)[0];
-  return cheapest && cheapest.price < p.myPrice;
+function showSavedUrl() {
+  el('saved-url-section').style.display = 'block';
+  el('saved-url-text').textContent = savedUrl;
 }
 
-function getTargetPrice(p) {
-  if(!p.competitors || !p.myPrice) return null;
-  const cheapest = p.competitors.filter(c => c.price > 0)[0];
-  if(!cheapest) return null;
-  return cheapest.price - 1;
+function clearSavedUrl() {
+  if(!confirm('記憶したURLを削除しますか？')) return;
+  const map = loadMap();
+  delete map[currentCode];
+  delete map['__' + currentName];
+  saveMap(map);
+  savedUrl = '';
+  el('saved-url-section').style.display = 'none';
+  setStatus('ok', 'URLを削除しました');
 }
 
-function renderList() {
-  const list = document.getElementById('product-list');
-  const filtered = getFilteredProducts();
+function openSavedUrl() {
+  if(savedUrl) window.open(savedUrl, '_blank');
+}
 
-  updateStats();
+function openRakutenSearch() {
+  const keyword = currentName
+    ? encodeURIComponent(currentName.replace(/【[^】]*】/g,'').trim().substring(0,30))
+    : '';
+  window.open(`https://search.rakuten.co.jp/search/mall/${keyword}/?s=2`, '_blank');
+}
 
-  if(!filtered.length) {
-    list.innerHTML = `<div class="empty">
-      <div class="empty-icon">📋</div>
-      <div class="empty-title">${currentFilter === 'done' ? 'チェック済みはありません' : currentFilter === 'danger' ? '要対応商品はありません' : '商品がありません'}</div>
-      <div>上の検索欄から商品を追加してください</div>
-    </div>`;
+// ============================================================
+// 価格計算
+// ============================================================
+function calcTarget() {
+  const myPrice   = parseInt(el('my-price').value)||0;
+  const compPrice = parseInt(el('competitor-price').value)||0;
+  if(!compPrice) { el('target-section').style.display='none'; return; }
+  const target = compPrice - 1;
+  el('target-price').textContent = '¥' + fmt(target);
+  const diff = target - myPrice;
+  if(myPrice) {
+    el('target-desc').textContent = diff > 0
+      ? `現在より +¥${fmt(diff)} 値上げ`
+      : diff < 0
+      ? `現在より -¥${fmt(Math.abs(diff))} 値下げ`
+      : '現在と同額';
+    el('target-desc').style.color = diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--text3)';
+  }
+  el('target-section').style.display = 'flex';
+}
+
+// ============================================================
+// 価格変更ログ
+// ============================================================
+function loadLog() {
+  try{ return JSON.parse(localStorage.getItem(PRICE_LOG_KEY)||'[]'); }catch(e){ return []; }
+}
+function saveLog(logs) {
+  try{ localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(logs)); }catch(e){}
+}
+
+function logChange() {
+  const myPrice   = parseInt(el('my-price').value)||0;
+  const compPrice = parseInt(el('competitor-price').value)||0;
+  if(!compPrice) { alert('競合価格を入力してください'); return; }
+  const target = compPrice - 1;
+  const logs = loadLog();
+  logs.unshift({
+    code:       currentCode,
+    name:       currentName,
+    oldPrice:   myPrice,
+    newPrice:   target,
+    competitor: compPrice,
+    date:       new Date().toISOString(),
+  });
+  saveLog(logs.slice(0,200));
+  el('my-price').value = target;
+  calcTarget();
+  renderLog();
+  setStatus('ok', `¥${fmt(target)} への価格変更を記録しました`);
+}
+
+function clearLog() {
+  if(!confirm('ログをすべて削除しますか？')) return;
+  saveLog([]);
+  renderLog();
+}
+
+function renderLog() {
+  const logs = loadLog();
+  const area = el('log-area');
+  if(!logs.length) {
+    area.innerHTML = '<div class="log-empty">まだ価格変更の記録がありません</div>';
     return;
   }
-
-  list.innerHTML = filtered.map((p, i) => {
-    const cheapest    = p.competitors?.filter(c => c.price > 0)[0];
-    const targetPrice = getTargetPrice(p);
-    const danger      = isDanger(p);
-    const isDone      = p.status === 'done';
-
-    let priceDisplay = '';
-    let priceBadge   = '';
-    if(cheapest && p.myPrice) {
-      const diff = cheapest.price - p.myPrice;
-      if(diff < 0) {
-        priceDisplay = `<span class="competitor-price cheaper">¥${fmt(cheapest.price)}</span>`;
-        priceBadge   = `<span class="badge badge-danger">⚠ ${Math.abs(diff)}円安い</span>`;
-      } else if(diff === 0) {
-        priceDisplay = `<span class="competitor-price same">¥${fmt(cheapest.price)}</span>`;
-        priceBadge   = `<span class="badge badge-undercut">同額</span>`;
-      } else {
-        priceDisplay = `<span class="competitor-price pricier">¥${fmt(cheapest.price)}</span>`;
-        priceBadge   = `<span class="badge badge-undercut">+${fmt(diff)}円高い</span>`;
-      }
-    } else if(!p.myPrice) {
-      priceDisplay = `<span class="competitor-price no-data">価格未設定</span>`;
-    } else {
-      priceDisplay = `<span class="competitor-price no-data">取得中</span>`;
-    }
-
-    const cardClass = ['product-card',
-      isDone ? 'done' : '',
-      danger && !isDone ? 'danger' : '',
-      !danger && cheapest && !isDone ? 'undercut' : ''
-    ].filter(Boolean).join(' ');
-
-    return `<div class="${cardClass}" id="card-${p.id}">
-      <div class="card-header" onclick="toggleExpand(${p.id})">
-        <div class="card-rank">${i+1}</div>
-        <div class="card-name ${isDone ? 'done-name' : ''}">${esc(p.name)}</div>
-        <div class="card-meta">
-          ${p.myPrice ? `<div class="my-price-badge">自 ¥${fmt(p.myPrice)}</div>` : ''}
-          ${priceDisplay}
-          ${targetPrice !== null && !isDone ? `<div class="target-price">→ ¥${fmt(targetPrice)}</div>` : ''}
-          ${priceBadge}
-          ${isDone ? '<span class="badge badge-done">✓ 完了</span>' : ''}
-        </div>
-      </div>
-      <div class="card-expand" id="expand-${p.id}">
-        <div class="competitor-list" id="comp-${p.id}">
-          ${renderCompetitors(p)}
-        </div>
-        <div class="action-row">
-          ${targetPrice !== null && !isDone ? `
-            <button class="btn btn-primary" onclick="logPriceChange(${p.id},${targetPrice})">
-              💰 ¥${fmt(targetPrice)} に変更完了
-            </button>` : ''}
-          ${!isDone ? `<button class="btn-sm" onclick="markDone(${p.id})">✓ 対応完了</button>` : ''}
-          ${isDone ? `<button class="btn-sm" onclick="markTodo(${p.id})">↩ 未完了に戻す</button>` : ''}
-          <button class="btn-sm" onclick="recheckProduct(${p.id})">↻ 再検索</button>
-          <button class="btn-sm" style="color:var(--red);border-color:rgba(224,80,80,.4)" onclick="removeProduct(${p.id})">削除</button>
-          ${p.myPrice ? `<span style="font-size:11px;color:var(--text3)">追加: ${new Date(p.addedAt).toLocaleDateString('ja-JP')}</span>` : ''}
-          ${p.lastPriceChange ? `<span style="font-size:11px;color:var(--green)">✓ 価格変更: ${new Date(p.lastPriceChange).toLocaleDateString('ja-JP')} → ¥${fmt(p.lastNewPrice)}</span>` : ''}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function renderCompetitors(p) {
-  if(!p.competitors || !p.competitors.length) {
-    return `<div class="loading-row"><div class="spinner"></div>取得中...</div>`;
-  }
-  return p.competitors.slice(0,8).map((c, i) => {
-    const isTop   = i === 0;
-    const cheaper = p.myPrice && c.price < p.myPrice;
-    return `<div class="comp-row ${isTop ? 'top' : ''}">
-      <div class="comp-rank">${i+1}</div>
-      <div class="comp-name" title="${esc(c.name)}">${esc(c.shop)}</div>
-      <div class="comp-price ${cheaper ? 'cheap' : 'ok'}">¥${fmt(c.price)}</div>
-      <a href="${esc(c.url)}" target="_blank" class="comp-link">開く →</a>
-    </div>`;
-  }).join('');
-}
-
-function toggleExpand(id, forceOpen) {
-  const el = document.getElementById(`expand-${id}`);
-  if(!el) return;
-  const isOpen = el.classList.contains('open');
-  if(forceOpen || !isOpen) el.classList.add('open');
-  else el.classList.remove('open');
-}
-
-// ============================================================
-// ACTIONS
-// ============================================================
-function logPriceChange(id, newPrice) {
-  const p = products.find(p => p.id === id);
-  if(!p) return;
-  const cheapest = p.competitors?.filter(c => c.price > 0)[0];
-  savePriceLog(p.code||'', p.name, p.myPrice, newPrice, cheapest?.price||0);
-  p.lastPriceChange = Date.now();
-  p.lastNewPrice = newPrice;
-  p.myPrice = newPrice;
-  p.status = 'done';
-  save();
-  renderList();
-  setStatus('ok', `¥${fmt(newPrice)} への価格変更を記録しました`);
-}
-
-function markDone(id) {
-  const p = products.find(p => p.id === id);
-  if(p) { p.status = 'done'; p.checkedAt = Date.now(); save(); renderList(); }
-}
-
-function markTodo(id) {
-  const p = products.find(p => p.id === id);
-  if(p) { p.status = 'todo'; save(); renderList(); }
-}
-
-function removeProduct(id) {
-  products = products.filter(p => p.id !== id);
-  save(); renderList();
-}
-
-function clearDone() {
-  if(!confirm('完了済みをすべて削除しますか？')) return;
-  products = products.filter(p => p.status !== 'done');
-  save(); renderList();
-}
-
-async function recheckProduct(id) {
-  const p = products.find(p => p.id === id);
-  if(!p) return;
-  const compEl = document.getElementById(`comp-${id}`);
-  if(compEl) compEl.innerHTML = `<div class="loading-row"><div class="spinner"></div>再検索中...</div>`;
-  setStatus('loading', `「${p.name}」を再検索中...`);
-  try {
-    p.competitors = await searchRakuten(p.name, p.myPrice);
-    p.checkedAt = Date.now();
-    save(); renderList();
-    toggleExpand(id, true);
-    setStatus('ok', '再検索完了');
-  } catch(err) {
-    setStatus('err', 'エラー: ' + err.message);
-  }
-}
-
-// ============================================================
-// STATS
-// ============================================================
-function updateStats() {
-  const done   = products.filter(p => p.status === 'done').length;
-  const todo   = products.filter(p => p.status === 'todo').length;
-  const danger = products.filter(p => isDanger(p) && p.status !== 'done').length;
-  document.getElementById('stat-done').textContent   = done;
-  document.getElementById('stat-todo').textContent   = todo;
-  document.getElementById('stat-danger').textContent = danger;
+  area.innerHTML = `<table class="log-table">
+    <thead><tr>
+      <th>日付</th><th>商品名</th><th>変更前</th><th>競合</th><th>変更後</th>
+    </tr></thead>
+    <tbody>
+      ${logs.map(l=>`<tr>
+        <td style="white-space:nowrap">${new Date(l.date).toLocaleDateString('ja-JP')}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name)}</td>
+        <td style="text-align:right;color:var(--text3)">¥${fmt(l.oldPrice)}</td>
+        <td style="text-align:right;color:var(--red)">¥${fmt(l.competitor)}</td>
+        <td style="text-align:right;color:var(--accent);font-weight:700">¥${fmt(l.newPrice)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
 }
 
 // ============================================================
 // UTILS
 // ============================================================
-function fmt(n) { return Math.round(n).toLocaleString('ja-JP'); }
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function setStatus(state, msg) {
-  const dot = document.getElementById('status-dot');
-  dot.className = 'dot' + (state==='ok'?' ok':state==='loading'?' loading':state==='err'?' err':'');
-  document.getElementById('status-text').textContent = msg;
-}
-function loadList() { load(); renderList(); setStatus('ok', `${products.length}件のリストを読み込みました`); }
-
-// ============================================================
-// INIT
-// ============================================================
-load();
-renderList();
-setStatus('ok', products.length > 0 ? `${products.length}件のリストを読み込みました` : '商品を検索して追加してください');
-
-// URIAGE FBからのパラメータを受け取る
-const urlParams = new URLSearchParams(location.search);
-const paramCode  = urlParams.get('code');
-const paramName  = urlParams.get('name');
-const paramPrice = urlParams.get('price');
-if(paramName) {
-  // 記憶済み検索ワードがあればそちらを使う
-  const savedKeyword = paramCode ? loadKeyword(paramCode) : null;
-  const keyword = savedKeyword || paramName;
-  document.getElementById('search-input').value = keyword;
-  document.getElementById('search-input').dataset.code = paramCode || '';
-  if(savedKeyword && savedKeyword !== paramName) {
-    setStatus('ok', `記憶済み検索ワード「${savedKeyword}」で検索します`);
-  }
-  if(paramPrice) document.getElementById('my-price-input').value = paramPrice;
-  const existing = products.find(p => p.name === keyword || p.name === paramName);
-  if(existing) {
-    renderList();
-    setTimeout(() => toggleExpand(existing.id, true), 200);
-    setStatus('ok', `「${existing.name}」の過去データを表示中`);
-  } else {
-    setTimeout(() => searchProduct(), 500);
-  }
+function fmt(n){ return Math.round(n||0).toLocaleString('ja-JP'); }
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function el(id){ return document.getElementById(id); }
+function setStatus(state, msg){
+  el('status-dot').className = 'dot ' + (state==='ok'?'ok':'warn');
+  el('status-text').textContent = msg;
 }
 </script>
 </body>
