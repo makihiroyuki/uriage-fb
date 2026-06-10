@@ -651,7 +651,7 @@ async function startLoadingWithDrive() {
       rows.forEach(r => {
         const code = String(r['商品コード']||'').trim();
         const key  = codeToKey(code);
-        if(!/^m-ctc/i.test(code)) return; // m-ctcのみ表示
+        if(!/^m-ctc/i.test(code)) return;
         const price = toNum(r['販売単価(税込)']);
         const qty   = toNum(r['数量'])||1;
         if(!liveMap.has(key)) {
@@ -665,8 +665,20 @@ async function startLoadingWithDrive() {
       });
     });
 
-    // ダッシュボード用にもapplyPeriodAndRender
+    // 先月・先々月も追記読み込み（失速アラート用）
+    const d = new Date(parseInt(target.year), parseInt(target.month)-1, 1);
+    for(const offset of [1, 2]) {
+      const md = new Date(d.getFullYear(), d.getMonth()-offset, 1);
+      const my = String(md.getFullYear());
+      const mm = String(md.getMonth()+1).padStart(2,'0');
+      try {
+        await loadYearMonth(rootId, my, mm, null, true);
+      } catch(e) {}
+    }
+
     applyPeriodAndRender();
+    detectStallProducts();
+    console.log('失速アラート検出完了');
 
     const skuCount = liveMap.size;
     statusEl.textContent = skuCount + ' SKUs — ' + allRows.length + ' ORDERS — READY';
