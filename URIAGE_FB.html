@@ -116,6 +116,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .fbtn[data-f="neg"].active{background:var(--accent2);color:#fff;border-color:var(--accent2)}
 .fbtn[data-f="ctc"].active{background:var(--accent3);color:#000;border-color:var(--accent3)}
 .fbtn[data-f="mab"].active{background:#c084fc;color:#000;border-color:#c084fc}
+.fbtn[data-f="ds"].active{background:#60a5fa;color:#000;border-color:#60a5fa}
 .fbtn[data-f="disc"].active{background:rgba(240,192,64,.2);color:var(--accent);border-color:var(--accent)}
 
 .data-table{width:100%;border-collapse:collapse;font-size:14px}
@@ -350,6 +351,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
         <button class="fbtn" data-f="AU" onclick="setFilter(this)" style="color:var(--au);border-color:rgba(0,184,160,.4)">AU PAY</button>
         <button class="fbtn" data-f="MC" onclick="setFilter(this)" style="color:var(--mc);border-color:rgba(255,64,64,.4)">メルカリ</button>
         <button class="fbtn" data-f="mab" onclick="setFilter(this)" style="color:#c084fc;border-color:rgba(192,132,252,.4)">MAB</button>
+        <button class="fbtn" data-f="ds" onclick="setFilter(this)" style="color:#60a5fa;border-color:rgba(96,165,250,.4)">DS</button>
         <button class="fbtn" data-f="neg" onclick="setFilter(this)" style="color:var(--accent2);border-color:rgba(224,80,80,.4)">⚠ マイナス</button>
         <button class="fbtn" data-f="disc" onclick="setFilter(this)" style="color:var(--accent);border-color:rgba(240,192,64,.4)">★ 値引き仕入れ</button>
       </div>
@@ -1025,7 +1027,7 @@ function applyPeriodAndRender() {
     : periodRows;
 
   const agg = aggregate(filteredRaw);
-  const filtered = (['neg','disc','ctc','mab'].includes(currentFilter))
+  const filtered = ((['neg','disc','ctc','mab','ds'].includes(currentFilter)))
     ? filterRows(agg, currentFilter) : agg;
 
   renderKPIs(filtered, filteredRaw.length);
@@ -1117,10 +1119,48 @@ function parseAzFeeCSV(text) {
 }
 
 function parseMasterXlsx(buf) {
-  const wb = XLSX.read(buf, { type:'array' });
+  const wb = XLSX.read(buf, { type:'array', cellDates:true });
   const ws = wb.Sheets['全商品DB'];
   if(!ws) throw new Error('全商品DBシートが見つかりません');
   const data = XLSX.utils.sheet_to_json(ws, { defval:'' });
+
+  // 値引き履歴シートを読み込んでCTCITNO→有効な値引き情報のMapを作る
+  const discountMap = new Map(); // ctcitno(文字列) → { salePrice, saleEndDate }
+  const wsDiscount = wb.Sheets['値引き履歴'];
+  if(wsDiscount) {
+    const ddata = XLSX.utils.sheet_to_json(wsDiscount, { defval:'', cellDates:true });
+    const today = new Date(); today.setHours(0,0,0,0);
+    ddata.forEach(row => {
+      const ctc      = String(row['CTCITNO']||'').replace(/\.0$/,'').trim();
+      const salePrice = toNum(row['値引き後価格']);
+      const endDateRaw = row['値引き終了日'];
+      if(!ctc || ctc==='CTCITNO' || salePrice===null) return;
+      // 終了日を解析
+      let endDate = null;
+      if(endDateRaw instanceof Date) {
+        endDate = endDateRaw;
+      } else if(typeof endDateRaw === 'number' && endDateRaw > 40000) {
+        // Excel日付シリアル値
+        endDate = new Date(Math.round((endDateRaw - 25569) * 86400 * 1000));
+      } else if(typeof endDateRaw === 'string' && endDateRaw) {
+        endDate = new Date(endDateRaw);
+      }
+      // 終了日が未来（有効期間中）のもののみ
+      if(!endDate || isNaN(endDate.getTime())) return;
+      if(endDate < today) return;
+      // 同じCTCITNOで複数ある場合は終了日が最も遠いものを使う
+      const existing = discountMap.get(ctc);
+      if(!existing || endDate > existing.saleEndDate) {
+        discountMap.set(ctc, {
+          salePrice,
+          saleEndDate: endDate,
+          saleEndDateStr: endDate.toISOString().slice(0,10),
+        });
+      }
+    });
+    console.log('値引き履歴読み込み完了:', discountMap.size, '件有効');
+  }
+
   const map = new Map();
   data.forEach(row => {
     const v = String(row['-variation']||'').trim();
@@ -1128,6 +1168,11 @@ function parseMasterXlsx(buf) {
     const key = normKey(v);
     const memo = String(row['MEMO']||'');
     const m = memo.match(/在庫0→(\d+)/);
+    const ctcitno = String(row['CTCITNO']||'').replace(/\.0$/,'').trim();
+
+    // 値引き履歴から有効な値引き情報を取得
+    const discountInfo = discountMap.get(ctcitno) || null;
+
     map.set(key, {
       name: String(row['商品名']||'').trim(),
       buyPrice: toNum(row['仕入れ金額']),
@@ -1139,10 +1184,11 @@ function parseMasterXlsx(buf) {
       lastBuyDate:  String(row['最終購入日']||'').replace(/\.0$/,''),
       isDiscount: memo.includes('在庫0→'),
       discountOrigPrice: m ? parseInt(m[1],10) : null,
-      ctcitno: String(row['CTCITNO']||'').trim(),
-      onSale: String(row['値引中']||'').trim() !== '',
+      ctcitno,
+      onSale: discountInfo !== null, // 値引き履歴に有効な記録あり
+      salePrice:      discountInfo ? discountInfo.salePrice      : (()=>{ const v=toNum(row['値引き時価格']); return (v&&v>0)?v:null; })(),
+      saleEndDate:    discountInfo ? discountInfo.saleEndDateStr  : null,
       asin: (()=>{ const v=String(row['商品ID']||'').trim(); return (v&&v!=='なし')?v:''; })(),
-      salePrice: (()=>{ const v=toNum(row['値引き時価格']); return (v&&v>0)?v:null; })(),
       profitTarget: toNum(row['利益']),
     });
   });
@@ -1237,6 +1283,7 @@ function aggregate(rows) {
       discountOrigPrice: m ? m.discountOrigPrice : null,
       onSale:         m ? m.onSale           : false,
       asin:           m ? m.asin             : '',
+      saleEndDate:    m ? m.saleEndDate       : null,
       profitTarget:   m ? m.profitTarget     : null,
       lastBuyDate:    m ? m.lastBuyDate       : null,
       rtInv:  m ? m.rtInv  : null,
@@ -1299,7 +1346,7 @@ function setFilter(btn) {
 
   const agg = aggregate(filteredRaw);
   // neg/disc/ctcはSKU単位のフィルター
-  const filtered = (['neg','disc','ctc','mab'].includes(currentFilter))
+  const filtered = ((['neg','disc','ctc','mab','ds'].includes(currentFilter)))
     ? filterRows(agg, currentFilter) : agg;
 
   displayData = sortRows(filtered);
@@ -1311,6 +1358,7 @@ function filterRows(agg, f) {
   if(f==='all') return agg;
   if(f==='ctc') return agg.filter(r => /^m-ctc/i.test(r.rawCode));
   if(f==='mab') return agg.filter(r => /^mab-/i.test(r.rawCode));
+  if(f==='ds')  return agg.filter(r => /^ds-/i.test(r.rawCode));
   if(f==='RT'||f==='AZ'||f==='AU'||f==='MC') return agg.filter(r=>r.malls.has(f));
   if(f==='neg')  return agg.filter(r=>r.totalProfit!==null&&r.totalProfit<0);
   if(f==='disc') return agg.filter(r=>r.isDiscount);
@@ -1320,9 +1368,12 @@ function filterRows(agg, f) {
 function getFilteredRawRows() {
   const range = getPeriodDates(currentPeriod);
   let rows = allRows;
-  // MABフィルター以外はmab-商品を除外
+  // MAB/DSフィルター以外はそれぞれのコードを除外
   if(currentFilter !== 'mab') {
     rows = rows.filter(r => !/^mab-/i.test(String(r['商品コード']||'')));
+  }
+  if(currentFilter !== 'ds') {
+    rows = rows.filter(r => !/^ds-/i.test(String(r['商品コード']||'')));
   }
   if(!range) return rows;
   const fromStr = fmtDateInput(range.from);
@@ -1625,6 +1676,9 @@ function renderModal() {
   titleEl.innerHTML = esc(row.name) +
     (row.profitTarget !== null
       ? `　<span style="font-size:13px;font-weight:400;color:var(--text3);letter-spacing:1px">利益設定 <span style="color:var(--accent3);font-weight:700">¥${fmt(row.profitTarget)}</span></span>`
+      : '') +
+    (row.onSale && row.saleEndDate
+      ? `　<span style="font-size:12px;font-weight:400;color:var(--accent)">★値引中 〜${row.saleEndDate}</span>`
       : '');
 
   // リンクボタン（楽天・Amazon）
