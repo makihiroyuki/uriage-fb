@@ -1159,6 +1159,7 @@ function parseMasterXlsx(buf) {
       }
     });
     console.log('値引き履歴読み込み完了:', discountMap.size, '件有効');
+    console.log('値引きキーサンプル:', [...discountMap.keys()].slice(0,5));
   }
 
   const map = new Map();
@@ -1170,7 +1171,7 @@ function parseMasterXlsx(buf) {
     const m = memo.match(/在庫0→(\d+)/);
     const ctcitno = String(row['CTCITNO']||'').replace(/\.0$/,'').trim();
 
-    // 値引き履歴から有効な値引き情報を取得
+    // 値引き履歴からCTCITNOで検索
     const discountInfo = discountMap.get(ctcitno) || null;
 
     map.set(key, {
