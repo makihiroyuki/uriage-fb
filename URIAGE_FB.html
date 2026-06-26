@@ -1131,7 +1131,13 @@ function parseMasterXlsx(buf) {
     const ddata = XLSX.utils.sheet_to_json(wsDiscount, { defval:'', cellDates:true });
     const today = new Date(); today.setHours(0,0,0,0);
     ddata.forEach(row => {
-      const ctc      = String(row['CTCITNO']||'').replace(/\.0$/,'').trim();
+      const ctc = (()=>{
+        const raw = row['CTCITNO'];
+        if(raw===null||raw===undefined||raw==='') return '';
+        // 数値型の場合は整数に
+        if(typeof raw === 'number') return String(Math.round(raw));
+        return String(raw).replace(/\.0$/,'').trim();
+      })();
       const salePrice = toNum(row['値引き後価格']);
       const endDateRaw = row['値引き終了日'];
       if(!ctc || ctc==='CTCITNO' || salePrice===null) return;
@@ -1170,9 +1176,8 @@ function parseMasterXlsx(buf) {
     const memo = String(row['MEMO']||'');
     const m = memo.match(/在庫0→(\d+)/);
     const ctcitno = String(row['CTCITNO']||'').replace(/\.0$/,'').trim();
-
-    // 値引き履歴からCTCITNOで検索
-    const discountInfo = discountMap.get(ctcitno) || null;
+    // discountMapはCTCITNO数値キーで検索
+    const discountInfo = discountMap.get(ctcitno) || discountMap.get(String(Math.round(Number(ctcitno)))) || null;
 
     map.set(key, {
       name: String(row['商品名']||'').trim(),
