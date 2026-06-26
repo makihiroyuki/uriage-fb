@@ -1176,8 +1176,11 @@ function parseMasterXlsx(buf) {
     const memo = String(row['MEMO']||'');
     const m = memo.match(/在庫0→(\d+)/);
     const ctcitno = String(row['CTCITNO']||'').replace(/\.0$/,'').trim();
-    // discountMapはCTCITNO数値キーで検索
-    const discountInfo = discountMap.get(ctcitno) || discountMap.get(String(Math.round(Number(ctcitno)))) || null;
+      // 値引き履歴からCTCITNOで検索
+      const discountInfo = discountMap.get(ctcitno) || discountMap.get(String(Math.round(Number(ctcitno)))) || null;
+      // onSale = 値引き履歴に有効な記録 OR 全商品DBの値引中列に値がある
+      const onSaleFromMaster = String(row['値引中']||'').trim() !== '';
+      const onSale = discountInfo !== null || onSaleFromMaster;
 
     map.set(key, {
       name: String(row['商品名']||'').trim(),
@@ -1191,7 +1194,7 @@ function parseMasterXlsx(buf) {
       isDiscount: memo.includes('在庫0→'),
       discountOrigPrice: m ? parseInt(m[1],10) : null,
       ctcitno,
-      onSale: discountInfo !== null, // 値引き履歴に有効な記録あり
+      onSale: onSale,
       salePrice:      discountInfo ? discountInfo.salePrice      : (()=>{ const v=toNum(row['値引き時価格']); return (v&&v>0)?v:null; })(),
       saleEndDate:    discountInfo ? discountInfo.saleEndDateStr  : null,
       asin: (()=>{ const v=String(row['商品ID']||'').trim(); return (v&&v!=='なし')?v:''; })(),
