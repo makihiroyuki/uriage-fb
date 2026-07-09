@@ -1686,8 +1686,8 @@ function renderModal() {
     (row.profitTarget !== null
       ? `　<span style="font-size:13px;font-weight:400;color:var(--text3);letter-spacing:1px">利益設定 <span style="color:var(--accent3);font-weight:700">¥${fmt(row.profitTarget)}</span></span>`
       : '') +
-    (row.onSale && row.saleEndDate
-      ? `　<span style="font-size:12px;font-weight:400;color:var(--accent)">★値引中 〜${row.saleEndDate}</span>`
+    (row.onSale
+      ? `　<span style="font-size:12px;font-weight:400;color:var(--accent)">★値引中${row.saleEndDate ? ' 〜'+row.saleEndDate : ''}</span>`
       : '');
 
   // リンクボタン（楽天・Amazon）
