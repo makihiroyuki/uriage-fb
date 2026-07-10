@@ -1123,6 +1123,9 @@ function parseMasterXlsx(buf) {
   const ws = wb.Sheets['全商品DB'];
   if(!ws) throw new Error('全商品DBシートが見つかりません');
   const data = XLSX.utils.sheet_to_json(ws, { defval:'' });
+  // デバッグ：最初の行のキーを確認
+  if(data.length > 0) console.log('全商品DB 最初の行のキー:', Object.keys(data[0]).slice(0,5));
+  if(data.length > 0) console.log('CTCITNO値:', data[0]['CTCITNO'], data[1]?.['CTCITNO']);
 
   // 値引き履歴シートを読み込んでCTCITNO→有効な値引き情報のMapを作る
   const discountMap = new Map();
