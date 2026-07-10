@@ -1123,9 +1123,10 @@ function parseMasterXlsx(buf) {
   const ws = wb.Sheets['全商品DB'];
   if(!ws) throw new Error('全商品DBシートが見つかりません');
   const data = XLSX.utils.sheet_to_json(ws, { defval:'' });
-  // デバッグ：最初の行のキーを確認
-  if(data.length > 0) console.log('全商品DB 最初の行のキー:', Object.keys(data[0]).slice(0,5));
-  if(data.length > 0) console.log('CTCITNO値:', data[0]['CTCITNO'], data[1]?.['CTCITNO']);
+  if(data.length > 0) console.log('値引きマッチ数:', [...Array.from(data)].filter(r => {
+    const ctc = String(r['CTCITNO']||r['__EMPTY']||'').replace(/\.0$/,'').trim();
+    return discountMap.has(ctc) || discountMap.has(String(Math.round(Number(ctc))));
+  }).length, '件');
 
   // 値引き履歴シートを読み込んでCTCITNO→有効な値引き情報のMapを作る
   const discountMap = new Map();
@@ -1179,11 +1180,8 @@ function parseMasterXlsx(buf) {
     const memo = String(row['MEMO']||'');
     const m = memo.match(/在庫0→(\d+)/);
     const ctcitno = String(row['CTCITNO'] || row['__EMPTY'] || '').replace(/\.0$/,'').trim();
-    // デバッグ：最初の5件だけログ
-    if(data.indexOf(row) < 5) console.log('CTCITNO raw:', row['CTCITNO'], '→', ctcitno, 'discountMapにある?', discountMap.has(ctcitno));
       // 値引き履歴からCTCITNOで検索
       const discountInfo = discountMap.get(ctcitno) || discountMap.get(String(Math.round(Number(ctcitno)))) || null;
-      if(discountInfo) console.log('値引きマッチ:', ctcitno, '→', discountInfo.salePrice, discountInfo.saleEndDateStr);
       // onSale = 値引き履歴に有効な記録 OR 全商品DBの値引中列に値がある
       const onSaleFromMaster = String(row['値引中']||'').trim() !== '';
       const onSale = discountInfo !== null || onSaleFromMaster;
