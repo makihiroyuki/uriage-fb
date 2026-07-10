@@ -1119,7 +1119,7 @@ function parseAzFeeCSV(text) {
 }
 
 function parseMasterXlsx(buf) {
-  const wb = XLSX.read(buf, { type:'array', cellDates:true });
+  const wb = XLSX.read(buf, { type:'array' });
   const ws = wb.Sheets['全商品DB'];
   if(!ws) throw new Error('全商品DBシートが見つかりません');
   const data = XLSX.utils.sheet_to_json(ws, { defval:'' });
