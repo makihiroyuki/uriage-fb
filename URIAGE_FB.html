@@ -1178,7 +1178,7 @@ function parseMasterXlsx(buf) {
     const key = normKey(v);
     const memo = String(row['MEMO']||'');
     const m = memo.match(/在庫0→(\d+)/);
-    const ctcitno = String(row['CTCITNO']||'').replace(/\.0$/,'').trim();
+    const ctcitno = String(row['CTCITNO'] || row['__EMPTY'] || '').replace(/\.0$/,'').trim();
     // デバッグ：最初の5件だけログ
     if(data.indexOf(row) < 5) console.log('CTCITNO raw:', row['CTCITNO'], '→', ctcitno, 'discountMapにある?', discountMap.has(ctcitno));
       // 値引き履歴からCTCITNOで検索
