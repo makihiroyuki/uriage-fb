@@ -1125,47 +1125,47 @@ function parseMasterXlsx(buf) {
   const data = XLSX.utils.sheet_to_json(ws, { defval:'' });
 
   // 値引き履歴シートを読み込んでCTCITNO→有効な値引き情報のMapを作る
-  const discountMap = new Map(); // ctcitno(文字列) → { salePrice, saleEndDate }
+  const discountMap = new Map();
   const wsDiscount = wb.Sheets['値引き履歴'];
   if(wsDiscount) {
-    const ddata = XLSX.utils.sheet_to_json(wsDiscount, { defval:'', cellDates:true });
+    const ddata = XLSX.utils.sheet_to_json(wsDiscount, { defval:'' });
     const today = new Date(); today.setHours(0,0,0,0);
     ddata.forEach(row => {
-      const ctc = (()=>{
-        const raw = row['CTCITNO'];
-        if(raw===null||raw===undefined||raw==='') return '';
-        // 数値型の場合は整数に
-        if(typeof raw === 'number') return String(Math.round(raw));
-        return String(raw).replace(/\.0$/,'').trim();
-      })();
+      // B列=CTCITNO
+      const rawCtc = row['CTCITNO'];
+      if(rawCtc===null||rawCtc===undefined||rawCtc==='') return;
+      const ctc = String(typeof rawCtc==='number' ? Math.round(rawCtc) : rawCtc).replace(/\.0$/,'').trim();
+      if(!ctc||ctc==='CTCITNO') return;
+
+      // E列=値引き後価格（仕入金額として使う）
       const salePrice = toNum(row['値引き後価格']);
+      if(salePrice===null) return;
+
+      // F列=値引き終了日（cellDates:trueなしなのでシリアル値か文字列）
       const endDateRaw = row['値引き終了日'];
-      if(!ctc || ctc==='CTCITNO' || salePrice===null) return;
-      // 終了日を解析
       let endDate = null;
-      if(endDateRaw instanceof Date) {
+      if(typeof endDateRaw==='number' && endDateRaw>40000) {
+        endDate = new Date(Math.round((endDateRaw-25569)*86400*1000));
+      } else if(endDateRaw instanceof Date && !isNaN(endDateRaw.getTime())) {
         endDate = endDateRaw;
-      } else if(typeof endDateRaw === 'number' && endDateRaw > 40000) {
-        // Excel日付シリアル値
-        endDate = new Date(Math.round((endDateRaw - 25569) * 86400 * 1000));
-      } else if(typeof endDateRaw === 'string' && endDateRaw) {
-        endDate = new Date(endDateRaw);
+      } else if(typeof endDateRaw==='string' && endDateRaw.trim()) {
+        endDate = new Date(endDateRaw.trim());
       }
-      // 終了日が未来（有効期間中）のもののみ
-      if(!endDate || isNaN(endDate.getTime())) return;
+      if(!endDate||isNaN(endDate.getTime())) return;
+      endDate.setHours(0,0,0,0);
       if(endDate < today) return;
-      // 同じCTCITNOで複数ある場合は終了日が最も遠いものを使う
+
+      const endDateStr = endDate.getFullYear()+'/'
+        +String(endDate.getMonth()+1).padStart(2,'0')+'/'
+        +String(endDate.getDate()).padStart(2,'0');
+
       const existing = discountMap.get(ctc);
-      if(!existing || endDate > existing.saleEndDate) {
-        discountMap.set(ctc, {
-          salePrice,
-          saleEndDate: endDate,
-          saleEndDateStr: endDate.toISOString().slice(0,10),
-        });
+      if(!existing||endDate>existing._endDate) {
+        discountMap.set(ctc, { salePrice, saleEndDateStr: endDateStr, _endDate: endDate });
       }
     });
     console.log('値引き履歴読み込み完了:', discountMap.size, '件有効');
-    console.log('値引きキーサンプル:', [...discountMap.keys()].slice(0,5));
+    console.log('サンプル:', [...discountMap.entries()].slice(0,3).map(([k,v])=>`${k}: ¥${v.salePrice} 〜${v.saleEndDateStr}`));
   }
 
   const map = new Map();
