@@ -970,6 +970,8 @@ async function onYmChange() {
 // ============================================================
 // PERIOD SELECTOR
 // ============================================================
+let customDateStr = ''; // 日付指定モードの日付
+
 function openCustomDate() {
   const input = el('custom-date-input');
   input.style.display = input.style.display === 'none' ? 'block' : 'none';
@@ -978,43 +980,30 @@ function openCustomDate() {
 
 function applyCustomDate(dateStr) {
   if(!dateStr) return;
+  customDateStr = dateStr;
   currentPeriod = 'custom';
   document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
   el('custom-date-btn').classList.add('active');
-  el('custom-date-input').style.display = 'none';
-
-  const rawRows = allRows.filter(r => {
-    const d = String(r['注文日']||'').substring(0,10);
-    return d === dateStr;
-  });
-  const mallCodes = ['RT','AZ','AU','MC'];
-  const filteredRaw = mallCodes.includes(currentFilter)
-    ? rawRows.filter(r => r._mall === currentFilter)
-    : rawRows.filter(r => {
-        if(currentFilter !== 'mab') if(/^mab-/i.test(String(r['商品コード']||''))) return false;
-        if(currentFilter !== 'ds')  if(/^ds-/i.test(String(r['商品コード']||'')))  return false;
-        return true;
-      });
-  const agg = aggregate(filteredRaw);
-  const filtered = (['neg','disc','ctc','mab','ds'].includes(currentFilter))
-    ? filterRows(agg, currentFilter) : agg;
-  displayData = sortRows(filtered);
-  renderKPIs(filtered, filteredRaw.length);
-  renderTable(displayData);
-  el('period-label').textContent = dateStr;
   el('custom-date-btn').textContent = `📅 ${dateStr}`;
+  el('custom-date-input').style.display = 'none';
+  applyPeriodAndRender();
 }
 
 function setPeriod(btn) {
   document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   currentPeriod = btn.dataset.p;
+  customDateStr = '';
   el('custom-date-input').style.display = 'none';
   el('custom-date-btn').textContent = '📅 日付指定';
   applyPeriodAndRender();
 }
 
 function getPeriodDates(period) {
+  if(period === 'custom' && customDateStr) {
+    const d = new Date(customDateStr + 'T00:00:00');
+    return { from: d, to: d };
+  }
   const today = new Date(); today.setHours(0,0,0,0);
   const dow = today.getDay(); // 0=Sun
   switch(period) {
