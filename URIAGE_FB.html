@@ -316,6 +316,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
         <button class="pbtn" data-p="week" onclick="setPeriod(this)">今週</button>
         <button class="pbtn" data-p="month" onclick="setPeriod(this)">今月</button>
         <button class="pbtn" data-p="all" onclick="setPeriod(this)">全期間</button>
+        <button class="pbtn" data-p="custom" id="custom-date-btn" onclick="openCustomDate()">📅 日付指定</button>
+        <input type="date" id="custom-date-input" style="display:none;background:var(--surface2);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:13px;padding:5px 10px;outline:none" onchange="applyCustomDate(this.value)">
       </div>
       <div class="top-date-label" id="period-label"></div>
     </div>
@@ -968,10 +970,47 @@ async function onYmChange() {
 // ============================================================
 // PERIOD SELECTOR
 // ============================================================
+function openCustomDate() {
+  const input = el('custom-date-input');
+  input.style.display = input.style.display === 'none' ? 'block' : 'none';
+  if(input.style.display === 'block') input.focus();
+}
+
+function applyCustomDate(dateStr) {
+  if(!dateStr) return;
+  currentPeriod = 'custom';
+  document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+  el('custom-date-btn').classList.add('active');
+  el('custom-date-input').style.display = 'none';
+
+  const rawRows = allRows.filter(r => {
+    const d = String(r['注文日']||'').substring(0,10);
+    return d === dateStr;
+  });
+  const mallCodes = ['RT','AZ','AU','MC'];
+  const filteredRaw = mallCodes.includes(currentFilter)
+    ? rawRows.filter(r => r._mall === currentFilter)
+    : rawRows.filter(r => {
+        if(currentFilter !== 'mab') if(/^mab-/i.test(String(r['商品コード']||''))) return false;
+        if(currentFilter !== 'ds')  if(/^ds-/i.test(String(r['商品コード']||'')))  return false;
+        return true;
+      });
+  const agg = aggregate(filteredRaw);
+  const filtered = (['neg','disc','ctc','mab','ds'].includes(currentFilter))
+    ? filterRows(agg, currentFilter) : agg;
+  displayData = sortRows(filtered);
+  renderKPIs(filtered, filteredRaw.length);
+  renderTable(displayData);
+  el('period-label').textContent = dateStr;
+  el('custom-date-btn').textContent = `📅 ${dateStr}`;
+}
+
 function setPeriod(btn) {
   document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   currentPeriod = btn.dataset.p;
+  el('custom-date-input').style.display = 'none';
+  el('custom-date-btn').textContent = '📅 日付指定';
   applyPeriodAndRender();
 }
 
