@@ -317,7 +317,11 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
         <button class="pbtn" data-p="month" onclick="setPeriod(this)">今月</button>
         <button class="pbtn" data-p="all" onclick="setPeriod(this)">全期間</button>
         <button class="pbtn" data-p="custom" id="custom-date-btn" onclick="openCustomDate()">📅 日付指定</button>
-        <input type="date" id="custom-date-input" style="display:none;background:var(--surface2);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:13px;padding:5px 10px;outline:none" onchange="applyCustomDate(this.value)">
+        <span id="custom-date-wrap" style="display:none;align-items:center;gap:6px">
+          <input type="date" id="custom-date-from" style="background:var(--surface2);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:13px;padding:5px 10px;outline:none" onchange="applyCustomDate()">
+          <span style="color:var(--text3);font-size:12px">〜</span>
+          <input type="date" id="custom-date-to" style="background:var(--surface2);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:13px;padding:5px 10px;outline:none" onchange="applyCustomDate()">
+        </span>
       </div>
       <div class="top-date-label" id="period-label"></div>
     </div>
@@ -970,22 +974,28 @@ async function onYmChange() {
 // ============================================================
 // PERIOD SELECTOR
 // ============================================================
-let customDateStr = ''; // 日付指定モードの日付
+let customDateStr = '';
+let customDateFrom = '';
+let customDateTo = '';
 
 function openCustomDate() {
-  const input = el('custom-date-input');
-  input.style.display = input.style.display === 'none' ? 'block' : 'none';
-  if(input.style.display === 'block') input.focus();
+  const wrap = el('custom-date-wrap');
+  wrap.style.display = wrap.style.display === 'none' ? 'flex' : 'none';
+  if(wrap.style.display === 'flex') el('custom-date-from').focus();
 }
 
-function applyCustomDate(dateStr) {
-  if(!dateStr) return;
-  customDateStr = dateStr;
+function applyCustomDate() {
+  const from = el('custom-date-from').value;
+  const to   = el('custom-date-to').value || from;
+  if(!from) return;
+  customDateFrom = from;
+  customDateTo   = to;
+  customDateStr  = from === to ? from : from + ' 〜 ' + to;
   currentPeriod = 'custom';
   document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
   el('custom-date-btn').classList.add('active');
-  el('custom-date-btn').textContent = `📅 ${dateStr}`;
-  el('custom-date-input').style.display = 'none';
+  el('custom-date-btn').textContent = `📅 ${customDateStr}`;
+  el('custom-date-wrap').style.display = 'none';
   applyPeriodAndRender();
 }
 
@@ -993,16 +1003,17 @@ function setPeriod(btn) {
   document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   currentPeriod = btn.dataset.p;
-  customDateStr = '';
-  el('custom-date-input').style.display = 'none';
+  customDateStr = ''; customDateFrom = ''; customDateTo = '';
+  el('custom-date-wrap').style.display = 'none';
   el('custom-date-btn').textContent = '📅 日付指定';
   applyPeriodAndRender();
 }
 
 function getPeriodDates(period) {
-  if(period === 'custom' && customDateStr) {
-    const d = new Date(customDateStr + 'T00:00:00');
-    return { from: d, to: d };
+  if(period === 'custom' && customDateFrom) {
+    const from = new Date(customDateFrom + 'T00:00:00');
+    const to   = new Date((customDateTo || customDateFrom) + 'T00:00:00');
+    return { from, to };
   }
   const today = new Date(); today.setHours(0,0,0,0);
   const dow = today.getDay(); // 0=Sun
