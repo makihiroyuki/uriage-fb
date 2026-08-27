@@ -117,6 +117,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .fbtn[data-f="ctc"].active{background:var(--accent3);color:#000;border-color:var(--accent3)}
 .fbtn[data-f="mab"].active{background:#c084fc;color:#000;border-color:#c084fc}
 .fbtn[data-f="ds"].active{background:#60a5fa;color:#000;border-color:#60a5fa}
+.fbtn[data-f="ctco"].active{background:#22d3ee;color:#000;border-color:#22d3ee}
 .fbtn[data-f="disc"].active{background:rgba(240,192,64,.2);color:var(--accent);border-color:var(--accent)}
 
 .data-table{width:100%;border-collapse:collapse;font-size:14px}
@@ -358,6 +359,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
         <button class="fbtn" data-f="MC" onclick="setFilter(this)" style="color:var(--mc);border-color:rgba(255,64,64,.4)">メルカリ</button>
         <button class="fbtn" data-f="mab" onclick="setFilter(this)" style="color:#c084fc;border-color:rgba(192,132,252,.4)">MAB</button>
         <button class="fbtn" data-f="ds" onclick="setFilter(this)" style="color:#60a5fa;border-color:rgba(96,165,250,.4)">DS</button>
+        <button class="fbtn" data-f="ctco" onclick="setFilter(this)" style="color:#22d3ee;border-color:rgba(34,211,238,.4)">CTCO</button>
         <button class="fbtn" data-f="neg" onclick="setFilter(this)" style="color:var(--accent2);border-color:rgba(224,80,80,.4)">⚠ マイナス</button>
         <button class="fbtn" data-f="disc" onclick="setFilter(this)" style="color:var(--accent);border-color:rgba(240,192,64,.4)">★ 値引き仕入れ</button>
       </div>
@@ -1066,7 +1068,7 @@ function applyPeriodAndRender() {
     : periodRows;
 
   const agg = aggregate(filteredRaw);
-  const filtered = ((['neg','disc','ctc','mab','ds'].includes(currentFilter)))
+  const filtered = ((['neg','disc','ctc','mab','ds','ctco'].includes(currentFilter)))
     ? filterRows(agg, currentFilter) : agg;
 
   renderKPIs(filtered, filteredRaw.length);
@@ -1394,7 +1396,7 @@ function setFilter(btn) {
 
   const agg = aggregate(filteredRaw);
   // neg/disc/ctcはSKU単位のフィルター
-  const filtered = ((['neg','disc','ctc','mab','ds'].includes(currentFilter)))
+  const filtered = ((['neg','disc','ctc','mab','ds','ctco'].includes(currentFilter)))
     ? filterRows(agg, currentFilter) : agg;
 
   displayData = sortRows(filtered);
@@ -1407,6 +1409,7 @@ function filterRows(agg, f) {
   if(f==='ctc') return agg.filter(r => /^m-ctc/i.test(r.rawCode));
   if(f==='mab') return agg.filter(r => /^mab-/i.test(r.rawCode));
   if(f==='ds')  return agg.filter(r => /^ds-/i.test(r.rawCode));
+  if(f==='ctco') return agg.filter(r => /^m-ctco-/i.test(r.rawCode));
   if(f==='RT'||f==='AZ'||f==='AU'||f==='MC') return agg.filter(r=>r.malls.has(f));
   if(f==='neg')  return agg.filter(r=>r.totalProfit!==null&&r.totalProfit<0);
   if(f==='disc') return agg.filter(r=>r.isDiscount);
@@ -1416,12 +1419,15 @@ function filterRows(agg, f) {
 function getFilteredRawRows() {
   const range = getPeriodDates(currentPeriod);
   let rows = allRows;
-  // MAB/DSフィルター以外はそれぞれのコードを除外
+  // MAB/DS/CTCOフィルター以外はそれぞれのコードを除外
   if(currentFilter !== 'mab') {
     rows = rows.filter(r => !/^mab-/i.test(String(r['商品コード']||'')));
   }
   if(currentFilter !== 'ds') {
     rows = rows.filter(r => !/^ds-/i.test(String(r['商品コード']||'')));
+  }
+  if(currentFilter !== 'ctco') {
+    rows = rows.filter(r => !/^m-ctco-/i.test(String(r['商品コード']||'')));
   }
   if(!range) return rows;
   const fromStr = fmtDateInput(range.from);
