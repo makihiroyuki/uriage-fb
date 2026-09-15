@@ -479,10 +479,15 @@ const FILE_PATTERNS = [
 ];
 const MASTER_PATTERN = /master|マスタ/i;
 
+// m-ctco- 商品の仕入金額・送料参照用 Google スプレッドシート（MAIN タブ）
+const CTCO_SHEET_ID = '1u-ptRO3__--XaEGlvbDcroVhvBF3t21W2J67we9EJ_4';
+const CTCO_SHEET_RANGE = 'MAIN!A:N';
+
 let cfg = loadCfg();
 let masterMap = new Map();
 let azFeeMap = new Map(); // 商品コード → 手数料率（AZ専用）
 let mabMap = new Map();   // mab-商品コード → 粗利単価
+let ctcoMap = new Map();  // m-ctco-商品コード → { buyPrice, shipFee, name, status }（Googleスプレッドシート MAIN タブ）
 let allRows = [];   // raw aggregated rows (all dates)
 let displayData = [];
 let currentFilter = 'all';
@@ -636,6 +641,10 @@ async function startLoadingWithDrive() {
         console.log('mab粗利表読み込み完了:', mabMap.size, '件');
       }
     } catch(e) { console.warn('mab粗利表読み込みエラー:', e); }
+
+    // CTCO仕入シート読み込み（Googleスプレッドシート MAIN タブ）
+    statusEl.textContent = 'LOADING CTCO SHEET...';
+    await loadCtcoMainSheet();
 
     // 年月確認
     statusEl.textContent = 'SCANNING FOLDERS...';
@@ -896,6 +905,10 @@ async function refreshData() {
       }
     } catch(e) { console.warn('mab粗利表読み込みエラー:', e); }
 
+    // CTCO仕入シート読み込み
+    setStatus('loading', 'CTCO仕入シート を読み込み中...');
+    await loadCtcoMainSheet();
+
     // 年月セレクターを構築
     setStatus('loading', '利用可能な年月を確認中...');
     const yms = await getAvailableYearMonths(rootId);
@@ -1096,6 +1109,33 @@ function parseMabCSV(text) {
   }
 }
 
+// CTCO仕入シート（Googleスプレッドシート MAIN タブ）読み込み
+// 列構成: A=base_sku, B=variant_sku, C=商品名, D=ステータス, E=仕入金額, F=送料,
+//         G=粗利, H=除外理由/メモ, I=値引き金額, J=値引き開始日, K=値引き終了日, L=最終更新日, M=RMS価格, N=RMS在庫
+// 1行目がヘッダー、2行目からデータ
+async function loadCtcoMainSheet() {
+  ctcoMap = new Map();
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CTCO_SHEET_ID}/values/${encodeURIComponent(CTCO_SHEET_RANGE)}?key=${cfg.apiKey}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('CTCO仕入シート取得エラー ' + res.status + '（Google Sheets APIが有効か確認してください）');
+    const data = await res.json();
+    const rows = data.values || [];
+    for(let i = 1; i < rows.length; i++) { // 1行目はヘッダー
+      const row = rows[i];
+      const baseSku    = String(row[0]||'').trim();
+      const variantSku = String(row[1]||'').trim();
+      const buyPrice   = toNum(row[4]); // E列 仕入金額
+      const shipFee    = toNum(row[5]) || 0; // F列 送料
+      if(buyPrice === null) continue;
+      const entry = { buyPrice, shipFee, name: row[2]||'', status: row[3]||'' };
+      if(variantSku) ctcoMap.set(codeToKey(variantSku), entry);
+      if(baseSku)    ctcoMap.set(codeToKey(baseSku), entry);
+    }
+    console.log('CTCO仕入シート読み込み完了:', ctcoMap.size, '件');
+  } catch(e) { console.warn('CTCO仕入シート読み込みエラー:', e); }
+}
+
 function parseAzFeeXlsx(buf) {
   try {
     const wb = XLSX.read(buf, { type:'array' });
@@ -1272,7 +1312,7 @@ function aggregate(rows) {
         name:(master&&master.name)||cleanName(String(row['商品名']||'')),
         master, qty:0, totalSales:0, prices:[], malls:new Set(), rows:[],
         orderCount:0, multiOrderCount:0, cancelCount:0,
-        totalShipFee:0,
+        totalShipFee:0, shipCount:0,
         totalFeeAmount:0, // 手数料合計（AZは個別レート）
       });
     }
@@ -1291,6 +1331,7 @@ function aggregate(rows) {
         e.totalFeeAmount += price * qty * feeRate;
       }
       e.totalShipFee += shipFee;
+      e.shipCount++;
     }
     e.malls.add(mall);
     e.rows.push(row);
@@ -1314,21 +1355,29 @@ function aggregate(rows) {
     const isMab = /^mab-/i.test(e.rawCode);
     const mabProfit = isMab ? mabMap.get(e.rawCode.toLowerCase()) : null;
 
+    // m-ctco-商品はCTCO仕入シート（Googleスプレッドシート MAIN タブ）の仕入金額・送料を優先して使う
+    const isCtco = /^m-ctco-/i.test(e.rawCode);
+    const ctcoEntry = isCtco ? ctcoMap.get(e.sku) : null;
+    const finalBuyPrice     = ctcoEntry ? ctcoEntry.buyPrice : effectiveBuyPrice;
+    const finalShipFee      = ctcoEntry ? ctcoEntry.shipFee  : shipFee;
+    const finalTotalShipFee = ctcoEntry ? ctcoEntry.shipFee * e.shipCount : e.totalShipFee;
+
     let unitProfit, totalProfit;
     if(isMab && mabProfit !== undefined) {
       unitProfit  = Math.round(mabProfit);
       totalProfit = Math.round(mabProfit * e.qty);
     } else {
-      const hasCost = effectiveBuyPrice!==null && avgSalesPrice!==null;
-      unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-effectiveFeeRate) - effectiveBuyPrice - shipFee) : null;
-      totalProfit = hasCost ? Math.round(e.totalSales*(1-effectiveFeeRate) - effectiveBuyPrice*e.qty - e.totalShipFee) : null;
+      const hasCost = finalBuyPrice!==null && avgSalesPrice!==null;
+      unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-effectiveFeeRate) - finalBuyPrice - finalShipFee) : null;
+      totalProfit = hasCost ? Math.round(e.totalSales*(1-effectiveFeeRate) - finalBuyPrice*e.qty - finalTotalShipFee) : null;
     }
 
     return {
       ...e,
-      buyPrice: effectiveBuyPrice, shipFee, avgSalesPrice, unitProfit, totalProfit,
+      buyPrice: finalBuyPrice, shipFee: finalShipFee, avgSalesPrice, unitProfit, totalProfit,
       feeRate: effectiveFeeRate,
       isMab,
+      isCtcoSourced: !!ctcoEntry,
       isDiscount:     m ? m.isDiscount       : false,
       discountOrigPrice: m ? m.discountOrigPrice : null,
       onSale:         m ? m.onSale           : false,
@@ -1751,7 +1800,9 @@ function renderModal() {
     ? `<span class="multi-badge" style="font-size:11px;padding:3px 8px">複数購入 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
   const negBadge = row.totalProfit!==null&&row.totalProfit<0
     ? `<span class="badge badge-neg" style="font-size:11px;padding:3px 8px">⚠ 粗利マイナス</span>` : '';
-  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge + linkHtml
+  const ctcoBadge = row.isCtcoSourced
+    ? `<span class="badge" style="font-size:11px;padding:3px 8px;background:rgba(34,211,238,.2);color:#22d3ee">CTCOシート参照</span>` : '';
+  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge + ctcoBadge + linkHtml
     + `<button onclick="openPriceChecker('${esc(row.rawCode)}','${esc(row.name.replace(/'/g,''))}',${row.avgSalesPrice||0})"
         style="display:inline-flex;align-items:center;gap:5px;background:rgba(240,192,64,.15);border:1px solid rgba(240,192,64,.4);border-radius:5px;padding:4px 10px;font-size:11px;color:var(--accent);font-weight:700;cursor:pointer;transition:all .15s"
         onmouseover="this.style.background='rgba(240,192,64,.3)'" onmouseout="this.style.background='rgba(240,192,64,.15)'">
@@ -1795,7 +1846,7 @@ function renderModal() {
     <div class="modal-kpi"><div class="modal-kpi-label">全粗利</div>
       <div class="modal-kpi-val" style="color:${row.totalProfit!==null&&row.totalProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.totalProfit,'+')}</div></div>
     <div class="modal-kpi" style="border-right:none">
-      <div class="modal-kpi-label">仕入価格${row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':''}</div>
+      <div class="modal-kpi-label">仕入価格${row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':''}${row.isCtcoSourced?'　<span style="font-size:10px;color:#22d3ee">CTCOシート</span>':''}</div>
       <div class="modal-kpi-val" style="${row.onSale?'color:var(--accent)':''}">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div>
     </div>
     <div class="modal-kpi" style="border-right:none">
@@ -1817,6 +1868,9 @@ function renderModal() {
   let bodyHtml = '';
   if(row.isDiscount && row.discountOrigPrice) {
     bodyHtml += `<div class="modal-disc-note">★ 値引き仕入れ品　¥${fmt(row.buyPrice)}（元値 ¥${fmt(row.discountOrigPrice)}）</div>`;
+  }
+  if(row.isCtcoSourced) {
+    bodyHtml += `<div class="modal-disc-note" style="background:rgba(34,211,238,.07);border-color:rgba(34,211,238,.25);color:#22d3ee">CTCO仕入シート（MAINタブ）の仕入金額 ¥${fmt(row.buyPrice)} を使用しています</div>`;
   }
   bodyHtml += `<table class="detail-table">
     <thead><tr>
