@@ -763,12 +763,43 @@ const MALL_CODE_MAP = { rakuten:'RT', amazon:'AZ', aupay:'AU', mercari:'MC' };
 // フォルダIDキャッシュ: "親ID/名前" → フォルダID
 const folderCache = new Map();
 
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Drive/Sheets APIへのfetchをリトライ付きで実行する
+// 短時間に大量アクセスするとGoogle側の一時的なレート制限で403やネットワークエラー
+// （CORSエラーとしてブラウザに表示されることがある）が返ってくることがあるため、
+// 少し待ってから自動で再試行する。
+async function fetchWithRetry(url, options, retries = 4, baseDelay = 600) {
+  let lastErr;
+  for(let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if(res.ok) return res;
+      // 429(レート制限)・403(一時的な拒否)・5xx(サーバー側)はリトライ対象
+      if((res.status === 429 || res.status === 403 || res.status >= 500) && attempt < retries) {
+        await sleep(baseDelay * Math.pow(2, attempt));
+        continue;
+      }
+      return res; // リトライ対象外のエラーはそのまま呼び出し元へ返す
+    } catch(e) {
+      // fetch自体が失敗するケース（CORSエラー表示になることがある一時的な通信エラーを含む）
+      lastErr = e;
+      if(attempt < retries) {
+        await sleep(baseDelay * Math.pow(2, attempt));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 async function driveList(parentId, mimeType=null) {
   let q = `'${parentId}' in parents and trashed=false`;
   if(mimeType) q += ` and mimeType='${mimeType}'`;
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&key=${cfg.apiKey}&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('Drive API エラー ' + res.status + ' — フォルダIDとAPIキーを確認');
+  const res = await fetchWithRetry(url);
+  if(!res.ok) throw new Error('Drive API エラー ' + res.status + ' — フォルダIDとAPIキーを確認（複数回リトライ後も失敗）');
   const data = await res.json();
   return data.files || [];
 }
@@ -785,8 +816,8 @@ async function findFolder(parentId, name) {
 
 async function downloadDriveFile(fileId) {
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${cfg.apiKey}&supportsAllDrives=true`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('ファイルDL失敗: ' + fileId);
+  const res = await fetchWithRetry(url);
+  if(!res.ok) throw new Error('ファイルDL失敗: ' + fileId + '（ステータス ' + res.status + '、複数回リトライ後も失敗）');
   return await res.arrayBuffer();
 }
 
@@ -842,12 +873,15 @@ async function loadYearMonth(rootId, year, month, onFileLoaded, appendMode) {
       const csvFiles = await driveList(monthId);
       const csvOnly  = csvFiles.filter(f => /\.csv$/i.test(f.name));
 
-      for(const f of csvOnly) {
+      for(let i = 0; i < csvOnly.length; i++) {
+        const f = csvOnly[i];
         const buf  = await downloadDriveFile(f.id);
         const text = new TextDecoder('shift-jis').decode(buf);
         const rows = parseCSV(text).map(r => ({ ...r, _mall: mallCode, _file: f.name }));
         allRows.push(...rows);
         if(onFileLoaded) onFileLoaded(rows, mallCode, f.name);
+        // 連続アクセスによるレート制限を避けるための小休止
+        if(i < csvOnly.length - 1) await sleep(120);
       }
       loadedMalls++;
     } catch(e) { console.warn(mallFolder + ' 読み込みエラー:', e); }
@@ -1117,7 +1151,7 @@ async function loadCtcoMainSheet() {
   ctcoMap = new Map();
   try {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${CTCO_SHEET_ID}/values/${encodeURIComponent(CTCO_SHEET_RANGE)}?key=${cfg.apiKey}`;
-    const res = await fetch(url);
+    const res = await fetchWithRetry(url);
     if(!res.ok) throw new Error('CTCO仕入シート取得エラー ' + res.status + '（Google Sheets APIが有効か確認してください）');
     const data = await res.json();
     const rows = data.values || [];
