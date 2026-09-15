@@ -1167,8 +1167,16 @@ async function loadCtcoMainSheet() {
       if(baseSku)    ctcoMap.set(codeToKey(baseSku), entry);
     }
     console.log('CTCO仕入シート読み込み完了:', ctcoMap.size, '件');
+    console.log('CTCOサンプル:', [...ctcoMap.entries()].slice(0,5));
   } catch(e) { console.warn('CTCO仕入シート読み込みエラー:', e); }
 }
+// コンソールから動作確認するためのヘルパー
+// 使い方: debugCtco('m-ctco-82197')
+window.debugCtco = function(code) {
+  const key = codeToKey(code);
+  console.log('入力:', code, '→ 正規化キー:', key, '→ ctcoMapの中身:', ctcoMap.get(key));
+  return ctcoMap.get(key);
+};
 
 function parseAzFeeXlsx(buf) {
   try {
