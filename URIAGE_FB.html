@@ -1144,9 +1144,9 @@ function parseMabCSV(text) {
 }
 
 // CTCO仕入シート（Googleスプレッドシート MAIN タブ）読み込み
-// 列構成: A=base_sku, B=variant_sku, C=商品名, D=ステータス, E=仕入金額, F=送料,
-//         G=粗利, H=除外理由/メモ, I=値引き金額, J=値引き開始日, K=値引き終了日, L=最終更新日, M=RMS価格, N=RMS在庫
-// 1行目がヘッダー、2行目からデータ
+// 列は決め打ちにせず、1行目のヘッダーから列名で読む(列の並びが変わっても壊れないように)。
+// join key には「楽天SKU」列(base_sku/variant_skuから正しく組み立て済みの完全な形。
+// 別番号パターンの商品にも対応済み)を使う。
 async function loadCtcoMainSheet() {
   ctcoMap = new Map();
   try {
@@ -1155,16 +1155,32 @@ async function loadCtcoMainSheet() {
     if(!res.ok) throw new Error('CTCO仕入シート取得エラー ' + res.status + '（Google Sheets APIが有効か確認してください）');
     const data = await res.json();
     const rows = data.values || [];
-    for(let i = 1; i < rows.length; i++) { // 1行目はヘッダー
+    if(rows.length < 2) return;
+
+    // 1行目(ヘッダー)から列名→インデックスのマップを作る
+    const header = rows[0];
+    const colIdx = {};
+    header.forEach((name, i) => { colIdx[String(name).trim()] = i; });
+
+    const need = ['楽天SKU', '仕入金額', '送料', '商品名', 'ステータス'];
+    const missing = need.filter(n => !(n in colIdx));
+    if(missing.length) {
+      console.warn('CTCO仕入シート: 列が見つかりません:', missing, '実際のヘッダー:', header);
+    }
+
+    for(let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const baseSku    = String(row[0]||'').trim();
-      const variantSku = String(row[1]||'').trim();
-      const buyPrice   = toNum(row[4]); // E列 仕入金額
-      const shipFee    = toNum(row[5]) || 0; // F列 送料
-      if(buyPrice === null) continue;
-      const entry = { buyPrice, shipFee, name: row[2]||'', status: row[3]||'' };
-      if(variantSku) ctcoMap.set(codeToKey(variantSku), entry);
-      if(baseSku)    ctcoMap.set(codeToKey(baseSku), entry);
+      const rakutenSku = String(row[colIdx['楽天SKU']] || '').trim();
+      const buyPrice   = toNum(row[colIdx['仕入金額']]);
+      const shipFee    = toNum(row[colIdx['送料']]) || 0;
+      if(!rakutenSku || buyPrice === null) continue;
+
+      const entry = {
+        buyPrice, shipFee,
+        name: row[colIdx['商品名']] || '',
+        status: row[colIdx['ステータス']] || '',
+      };
+      ctcoMap.set(codeToKey(rakutenSku), entry);
     }
     console.log('CTCO仕入シート読み込み完了:', ctcoMap.size, '件');
     console.log('CTCOサンプル:', [...ctcoMap.entries()].slice(0,5));
