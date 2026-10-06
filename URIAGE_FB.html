@@ -479,15 +479,10 @@ const FILE_PATTERNS = [
 ];
 const MASTER_PATTERN = /master|マスタ/i;
 
-// m-ctco- 商品の仕入金額・送料参照用 Google スプレッドシート（MAIN タブ）
-const CTCO_SHEET_ID = '1u-ptRO3__--XaEGlvbDcroVhvBF3t21W2J67we9EJ_4';
-const CTCO_SHEET_RANGE = 'MAIN!A:N';
-
 let cfg = loadCfg();
 let masterMap = new Map();
 let azFeeMap = new Map(); // 商品コード → 手数料率（AZ専用）
 let mabMap = new Map();   // mab-商品コード → 粗利単価
-let ctcoMap = new Map();  // m-ctco-商品コード → { buyPrice, shipFee, name, status }（Googleスプレッドシート MAIN タブ）
 let allRows = [];   // raw aggregated rows (all dates)
 let displayData = [];
 let currentFilter = 'all';
@@ -602,9 +597,11 @@ async function startLoadingWithDrive() {
     // マスタDB取得
     statusEl.textContent = 'LOADING MASTER DB...';
     const rootFiles = await driveList(rootId);
-    const masterFile = rootFiles.find(f => MASTER_PATTERN.test(f.name));
+    const masterFile = rootFiles.filter(f => f.mimeType !== 'application/vnd.google-apps.folder')
+      .map(resolveDriveFile).find(f => MASTER_PATTERN.test(f.name));
     if(masterFile) {
-      const buf = await downloadDriveFile(masterFile.id);
+      console.log('マスタDB:', masterFile.name, masterFile.mimeType, masterFile.id);
+      const buf = await downloadDriveFile(masterFile.id, masterFile.mimeType);
       masterMap = parseMasterXlsx(buf);
     }
 
@@ -641,10 +638,6 @@ async function startLoadingWithDrive() {
         console.log('mab粗利表読み込み完了:', mabMap.size, '件');
       }
     } catch(e) { console.warn('mab粗利表読み込みエラー:', e); }
-
-    // CTCO仕入シート読み込み（Googleスプレッドシート MAIN タブ）
-    statusEl.textContent = 'LOADING CTCO SHEET...';
-    await loadCtcoMainSheet();
 
     // 年月確認
     statusEl.textContent = 'SCANNING FOLDERS...';
@@ -763,43 +756,12 @@ const MALL_CODE_MAP = { rakuten:'RT', amazon:'AZ', aupay:'AU', mercari:'MC' };
 // フォルダIDキャッシュ: "親ID/名前" → フォルダID
 const folderCache = new Map();
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// Drive/Sheets APIへのfetchをリトライ付きで実行する
-// 短時間に大量アクセスするとGoogle側の一時的なレート制限で403やネットワークエラー
-// （CORSエラーとしてブラウザに表示されることがある）が返ってくることがあるため、
-// 少し待ってから自動で再試行する。
-async function fetchWithRetry(url, options, retries = 4, baseDelay = 600) {
-  let lastErr;
-  for(let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(url, options);
-      if(res.ok) return res;
-      // 429(レート制限)・403(一時的な拒否)・5xx(サーバー側)はリトライ対象
-      if((res.status === 429 || res.status === 403 || res.status >= 500) && attempt < retries) {
-        await sleep(baseDelay * Math.pow(2, attempt));
-        continue;
-      }
-      return res; // リトライ対象外のエラーはそのまま呼び出し元へ返す
-    } catch(e) {
-      // fetch自体が失敗するケース（CORSエラー表示になることがある一時的な通信エラーを含む）
-      lastErr = e;
-      if(attempt < retries) {
-        await sleep(baseDelay * Math.pow(2, attempt));
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw lastErr;
-}
-
 async function driveList(parentId, mimeType=null) {
   let q = `'${parentId}' in parents and trashed=false`;
   if(mimeType) q += ` and mimeType='${mimeType}'`;
-  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&key=${cfg.apiKey}&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
-  const res = await fetchWithRetry(url);
-  if(!res.ok) throw new Error('Drive API エラー ' + res.status + ' — フォルダIDとAPIキーを確認（複数回リトライ後も失敗）');
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,shortcutDetails)&key=${cfg.apiKey}&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Drive API エラー ' + res.status + ' — フォルダIDとAPIキーを確認');
   const data = await res.json();
   return data.files || [];
 }
@@ -814,11 +776,29 @@ async function findFolder(parentId, name) {
   return id;
 }
 
-async function downloadDriveFile(fileId) {
-  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${cfg.apiKey}&supportsAllDrives=true`;
-  const res = await fetchWithRetry(url);
-  if(!res.ok) throw new Error('ファイルDL失敗: ' + fileId + '（ステータス ' + res.status + '、複数回リトライ後も失敗）');
+async function downloadDriveFile(fileId, mimeType) {
+  // ネイティブGoogleスプレッドシートは alt=media 不可 → xlsxにエクスポート
+  const isSheet = mimeType === 'application/vnd.google-apps.spreadsheet';
+  const url = isSheet
+    ? `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=${encodeURIComponent('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}&key=${cfg.apiKey}`
+    : `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${cfg.apiKey}&supportsAllDrives=true`;
+  let res;
+  try { res = await fetch(url); }
+  catch(e) { throw new Error('ファイルDL失敗(通信/CORS) id=' + fileId + ' type=' + (mimeType||'?') + ' — 実際のHTTPステータスはDevTools Networkタブで確認'); }
+  if(!res.ok) {
+    let detail = '';
+    try { const j = await res.json(); detail = j.error && (j.error.message || (j.error.errors && j.error.errors[0] && j.error.errors[0].reason)) || ''; } catch(e) {}
+    throw new Error('ファイルDL失敗 HTTP ' + res.status + ' id=' + fileId + ' type=' + (mimeType||'?') + (detail ? ' — ' + detail : ''));
+  }
   return await res.arrayBuffer();
+}
+
+// ショートカットは実体のIDに解決する
+function resolveDriveFile(f) {
+  if(f.mimeType === 'application/vnd.google-apps.shortcut' && f.shortcutDetails) {
+    return { id: f.shortcutDetails.targetId, name: f.name, mimeType: f.shortcutDetails.targetMimeType };
+  }
+  return f;
 }
 
 // 利用可能な年月一覧を取得（実際にCSVがある月のみ）
@@ -873,15 +853,12 @@ async function loadYearMonth(rootId, year, month, onFileLoaded, appendMode) {
       const csvFiles = await driveList(monthId);
       const csvOnly  = csvFiles.filter(f => /\.csv$/i.test(f.name));
 
-      for(let i = 0; i < csvOnly.length; i++) {
-        const f = csvOnly[i];
-        const buf  = await downloadDriveFile(f.id);
+      for(const f of csvOnly) {
+        const buf  = await downloadDriveFile(f.id, f.mimeType);
         const text = new TextDecoder('shift-jis').decode(buf);
         const rows = parseCSV(text).map(r => ({ ...r, _mall: mallCode, _file: f.name }));
         allRows.push(...rows);
         if(onFileLoaded) onFileLoaded(rows, mallCode, f.name);
-        // 連続アクセスによるレート制限を避けるための小休止
-        if(i < csvOnly.length - 1) await sleep(120);
       }
       loadedMalls++;
     } catch(e) { console.warn(mallFolder + ' 読み込みエラー:', e); }
@@ -897,10 +874,12 @@ async function refreshData() {
 
     // 商品マスタDB（ルート直下）
     const rootFiles = await driveList(rootId);
-    const masterFile = rootFiles.find(f => MASTER_PATTERN.test(f.name));
+    const masterFile = rootFiles.filter(f => f.mimeType !== 'application/vnd.google-apps.folder')
+      .map(resolveDriveFile).find(f => MASTER_PATTERN.test(f.name));
     if(masterFile) {
       setStatus('loading', '商品マスタDB を読み込み中...');
-      const buf = await downloadDriveFile(masterFile.id);
+      console.log('マスタDB:', masterFile.name, masterFile.mimeType, masterFile.id);
+      const buf = await downloadDriveFile(masterFile.id, masterFile.mimeType);
       masterMap = parseMasterXlsx(buf);
     }
 
@@ -938,10 +917,6 @@ async function refreshData() {
         console.log('mab粗利表読み込み完了:', mabMap.size, '件');
       }
     } catch(e) { console.warn('mab粗利表読み込みエラー:', e); }
-
-    // CTCO仕入シート読み込み
-    setStatus('loading', 'CTCO仕入シート を読み込み中...');
-    await loadCtcoMainSheet();
 
     // 年月セレクターを構築
     setStatus('loading', '利用可能な年月を確認中...');
@@ -1143,57 +1118,6 @@ function parseMabCSV(text) {
   }
 }
 
-// CTCO仕入シート（Googleスプレッドシート MAIN タブ）読み込み
-// 列は決め打ちにせず、1行目のヘッダーから列名で読む(列の並びが変わっても壊れないように)。
-// join key には「楽天SKU」列(base_sku/variant_skuから正しく組み立て済みの完全な形。
-// 別番号パターンの商品にも対応済み)を使う。
-async function loadCtcoMainSheet() {
-  ctcoMap = new Map();
-  try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CTCO_SHEET_ID}/values/${encodeURIComponent(CTCO_SHEET_RANGE)}?key=${cfg.apiKey}`;
-    const res = await fetchWithRetry(url);
-    if(!res.ok) throw new Error('CTCO仕入シート取得エラー ' + res.status + '（Google Sheets APIが有効か確認してください）');
-    const data = await res.json();
-    const rows = data.values || [];
-    if(rows.length < 2) return;
-
-    // 1行目(ヘッダー)から列名→インデックスのマップを作る
-    const header = rows[0];
-    const colIdx = {};
-    header.forEach((name, i) => { colIdx[String(name).trim()] = i; });
-
-    const need = ['楽天SKU', '仕入金額', '送料', '商品名', 'ステータス'];
-    const missing = need.filter(n => !(n in colIdx));
-    if(missing.length) {
-      console.warn('CTCO仕入シート: 列が見つかりません:', missing, '実際のヘッダー:', header);
-    }
-
-    for(let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const rakutenSku = String(row[colIdx['楽天SKU']] || '').trim();
-      const buyPrice   = toNum(row[colIdx['仕入金額']]);
-      const shipFee    = toNum(row[colIdx['送料']]) || 0;
-      if(!rakutenSku || buyPrice === null) continue;
-
-      const entry = {
-        buyPrice, shipFee,
-        name: row[colIdx['商品名']] || '',
-        status: row[colIdx['ステータス']] || '',
-      };
-      ctcoMap.set(codeToKey(rakutenSku), entry);
-    }
-    console.log('CTCO仕入シート読み込み完了:', ctcoMap.size, '件');
-    console.log('CTCOサンプル:', [...ctcoMap.entries()].slice(0,5));
-  } catch(e) { console.warn('CTCO仕入シート読み込みエラー:', e); }
-}
-// コンソールから動作確認するためのヘルパー
-// 使い方: debugCtco('m-ctco-82197')
-window.debugCtco = function(code) {
-  const key = codeToKey(code);
-  console.log('入力:', code, '→ 正規化キー:', key, '→ ctcoMapの中身:', ctcoMap.get(key));
-  return ctcoMap.get(key);
-};
-
 function parseAzFeeXlsx(buf) {
   try {
     const wb = XLSX.read(buf, { type:'array' });
@@ -1370,7 +1294,7 @@ function aggregate(rows) {
         name:(master&&master.name)||cleanName(String(row['商品名']||'')),
         master, qty:0, totalSales:0, prices:[], malls:new Set(), rows:[],
         orderCount:0, multiOrderCount:0, cancelCount:0,
-        totalShipFee:0, shipCount:0,
+        totalShipFee:0,
         totalFeeAmount:0, // 手数料合計（AZは個別レート）
       });
     }
@@ -1389,7 +1313,6 @@ function aggregate(rows) {
         e.totalFeeAmount += price * qty * feeRate;
       }
       e.totalShipFee += shipFee;
-      e.shipCount++;
     }
     e.malls.add(mall);
     e.rows.push(row);
@@ -1413,29 +1336,21 @@ function aggregate(rows) {
     const isMab = /^mab-/i.test(e.rawCode);
     const mabProfit = isMab ? mabMap.get(e.rawCode.toLowerCase()) : null;
 
-    // m-ctco-商品はCTCO仕入シート（Googleスプレッドシート MAIN タブ）の仕入金額・送料を優先して使う
-    const isCtco = /^m-ctco-/i.test(e.rawCode);
-    const ctcoEntry = isCtco ? ctcoMap.get(e.sku) : null;
-    const finalBuyPrice     = ctcoEntry ? ctcoEntry.buyPrice : effectiveBuyPrice;
-    const finalShipFee      = ctcoEntry ? ctcoEntry.shipFee  : shipFee;
-    const finalTotalShipFee = ctcoEntry ? ctcoEntry.shipFee * e.shipCount : e.totalShipFee;
-
     let unitProfit, totalProfit;
     if(isMab && mabProfit !== undefined) {
       unitProfit  = Math.round(mabProfit);
       totalProfit = Math.round(mabProfit * e.qty);
     } else {
-      const hasCost = finalBuyPrice!==null && avgSalesPrice!==null;
-      unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-effectiveFeeRate) - finalBuyPrice - finalShipFee) : null;
-      totalProfit = hasCost ? Math.round(e.totalSales*(1-effectiveFeeRate) - finalBuyPrice*e.qty - finalTotalShipFee) : null;
+      const hasCost = effectiveBuyPrice!==null && avgSalesPrice!==null;
+      unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-effectiveFeeRate) - effectiveBuyPrice - shipFee) : null;
+      totalProfit = hasCost ? Math.round(e.totalSales*(1-effectiveFeeRate) - effectiveBuyPrice*e.qty - e.totalShipFee) : null;
     }
 
     return {
       ...e,
-      buyPrice: finalBuyPrice, shipFee: finalShipFee, avgSalesPrice, unitProfit, totalProfit,
+      buyPrice: effectiveBuyPrice, shipFee, avgSalesPrice, unitProfit, totalProfit,
       feeRate: effectiveFeeRate,
       isMab,
-      isCtcoSourced: !!ctcoEntry,
       isDiscount:     m ? m.isDiscount       : false,
       discountOrigPrice: m ? m.discountOrigPrice : null,
       onSale:         m ? m.onSale           : false,
@@ -1858,9 +1773,7 @@ function renderModal() {
     ? `<span class="multi-badge" style="font-size:11px;padding:3px 8px">複数購入 ${row.multiOrderCount}/${row.orderCount}件</span>` : '';
   const negBadge = row.totalProfit!==null&&row.totalProfit<0
     ? `<span class="badge badge-neg" style="font-size:11px;padding:3px 8px">⚠ 粗利マイナス</span>` : '';
-  const ctcoBadge = row.isCtcoSourced
-    ? `<span class="badge" style="font-size:11px;padding:3px 8px;background:rgba(34,211,238,.2);color:#22d3ee">CTCOシート参照</span>` : '';
-  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge + ctcoBadge + linkHtml
+  el('modal-badges').innerHTML = srcBadges + discBadge + multiBadge + negBadge + linkHtml
     + `<button onclick="openPriceChecker('${esc(row.rawCode)}','${esc(row.name.replace(/'/g,''))}',${row.avgSalesPrice||0})"
         style="display:inline-flex;align-items:center;gap:5px;background:rgba(240,192,64,.15);border:1px solid rgba(240,192,64,.4);border-radius:5px;padding:4px 10px;font-size:11px;color:var(--accent);font-weight:700;cursor:pointer;transition:all .15s"
         onmouseover="this.style.background='rgba(240,192,64,.3)'" onmouseout="this.style.background='rgba(240,192,64,.15)'">
@@ -1904,7 +1817,7 @@ function renderModal() {
     <div class="modal-kpi"><div class="modal-kpi-label">全粗利</div>
       <div class="modal-kpi-val" style="color:${row.totalProfit!==null&&row.totalProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.totalProfit,'+')}</div></div>
     <div class="modal-kpi" style="border-right:none">
-      <div class="modal-kpi-label">仕入価格${row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':''}${row.isCtcoSourced?'　<span style="font-size:10px;color:#22d3ee">CTCOシート</span>':''}</div>
+      <div class="modal-kpi-label">仕入価格${row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':''}</div>
       <div class="modal-kpi-val" style="${row.onSale?'color:var(--accent)':''}">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div>
     </div>
     <div class="modal-kpi" style="border-right:none">
@@ -1926,9 +1839,6 @@ function renderModal() {
   let bodyHtml = '';
   if(row.isDiscount && row.discountOrigPrice) {
     bodyHtml += `<div class="modal-disc-note">★ 値引き仕入れ品　¥${fmt(row.buyPrice)}（元値 ¥${fmt(row.discountOrigPrice)}）</div>`;
-  }
-  if(row.isCtcoSourced) {
-    bodyHtml += `<div class="modal-disc-note" style="background:rgba(34,211,238,.07);border-color:rgba(34,211,238,.25);color:#22d3ee">CTCO仕入シート（MAINタブ）の仕入金額 ¥${fmt(row.buyPrice)} を使用しています</div>`;
   }
   bodyHtml += `<table class="detail-table">
     <thead><tr>
