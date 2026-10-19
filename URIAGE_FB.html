@@ -592,7 +592,7 @@ async function startLoadingWithDrive() {
 
   try {
     const rootId = cfg.folderId;
-    folderCache.clear();
+    folderCache.clear(); listCache.clear();
 
     // マスタDB取得
     statusEl.textContent = 'LOADING MASTER DB...';
@@ -601,7 +601,7 @@ async function startLoadingWithDrive() {
       .map(resolveDriveFile).find(f => MASTER_PATTERN.test(f.name));
     if(masterFile) {
       console.log('マスタDB:', masterFile.name, masterFile.mimeType, masterFile.id);
-      const buf = await downloadDriveFile(masterFile.id, masterFile.mimeType);
+      const buf = await downloadDriveFile(masterFile.id, masterFile.mimeType, masterFile.modifiedTime);
       masterMap = parseMasterXlsx(buf);
     }
 
@@ -614,7 +614,7 @@ async function startLoadingWithDrive() {
         const azFeeFiles = await driveList(azFeeFolder.id);
         const azFeeTargets = azFeeFiles.filter(f => /\.(csv|xlsx|xls)$/i.test(f.name));
         for(const f of azFeeTargets) {
-          const buf = await downloadDriveFile(f.id);
+          const buf = await downloadDriveFile(f.id, f.mimeType, f.modifiedTime);
           if(/\.xlsx?$/i.test(f.name)) {
             parseAzFeeXlsx(buf);
           } else {
@@ -632,7 +632,7 @@ async function startLoadingWithDrive() {
       const mabFile = rootFiles.find(f => /^mabararihyo/i.test(f.name));
       if(mabFile) {
         statusEl.textContent = 'LOADING MAB DATA...';
-        const buf  = await downloadDriveFile(mabFile.id);
+        const buf  = await downloadDriveFile(mabFile.id, mabFile.mimeType, mabFile.modifiedTime);
         const text = new TextDecoder('shift-jis').decode(buf);
         parseMabCSV(text);
         console.log('mab粗利表読み込み完了:', mabMap.size, '件');
@@ -755,15 +755,20 @@ const MALL_CODE_MAP = { rakuten:'RT', amazon:'AZ', aupay:'AU', mercari:'MC' };
 
 // フォルダIDキャッシュ: "親ID/名前" → フォルダID
 const folderCache = new Map();
+const listCache   = new Map(); // 一覧結果のセッション内キャッシュ（API呼び出し削減）
 
 async function driveList(parentId, mimeType=null) {
+  const lcKey = parentId + '|' + (mimeType||'');
+  if(listCache.has(lcKey)) return listCache.get(lcKey);
   let q = `'${parentId}' in parents and trashed=false`;
   if(mimeType) q += ` and mimeType='${mimeType}'`;
-  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,shortcutDetails)&key=${cfg.apiKey}&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,modifiedTime,shortcutDetails)&key=${cfg.apiKey}&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const res = await fetch(url);
   if(!res.ok) throw new Error('Drive API エラー ' + res.status + ' — フォルダIDとAPIキーを確認');
   const data = await res.json();
-  return data.files || [];
+  const files = data.files || [];
+  listCache.set(lcKey, files);
+  return files;
 }
 
 async function findFolder(parentId, name) {
@@ -776,7 +781,47 @@ async function findFolder(parentId, name) {
   return id;
 }
 
-async function downloadDriveFile(fileId, mimeType) {
+// ---- ダウンロードキャッシュ（IndexedDB）: 同じ版のファイルは再ダウンロードしない ----
+let _idbPromise = null;
+function idb() {
+  if(_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((res, rej) => {
+    try {
+      const r = indexedDB.open('uriage_fb_cache', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('files');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    } catch(e) { rej(e); }
+  });
+  return _idbPromise;
+}
+async function cacheGet(fileId, version) {
+  if(!version) return null;
+  try {
+    const db = await idb();
+    return await new Promise(res => {
+      const q = db.transaction('files').objectStore('files').get(fileId);
+      q.onsuccess = () => res(q.result && q.result.v === version ? q.result.buf : null);
+      q.onerror = () => res(null);
+    });
+  } catch(e) { return null; }
+}
+async function cachePut(fileId, version, buf) {
+  if(!version) return;
+  try {
+    const db = await idb();
+    await new Promise(res => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').put({ v: version, buf }, fileId);
+      tx.oncomplete = () => res(); tx.onerror = () => res();
+    });
+  } catch(e) {}
+}
+
+async function downloadDriveFile(fileId, mimeType, version) {
+  const cached = await cacheGet(fileId, version);
+  if(cached) return cached;
+
   // ネイティブGoogleスプレッドシートは alt=media 不可 → xlsxにエクスポート
   const isSheet = mimeType === 'application/vnd.google-apps.spreadsheet';
   const url = isSheet
@@ -784,13 +829,23 @@ async function downloadDriveFile(fileId, mimeType) {
     : `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${cfg.apiKey}&supportsAllDrives=true`;
   let res;
   try { res = await fetch(url); }
-  catch(e) { throw new Error('ファイルDL失敗(通信/CORS) id=' + fileId + ' type=' + (mimeType||'?') + ' — 実際のHTTPステータスはDevTools Networkタブで確認'); }
+  catch(e) {
+    // ステータスが取れない失敗＝通信遮断。メタ情報だけ取れるかで切り分ける
+    let hint;
+    try {
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,size&supportsAllDrives=true&key=${cfg.apiKey}`);
+      hint = r.ok ? 'メタ情報は取得OK／ダウンロードだけ遮断（Googleの一時ブロックの可能性大）' : 'メタ情報もHTTP ' + r.status;
+    } catch(e2) { hint = 'メタ情報も通信不可（この回線がGoogleに一時ブロックされている可能性大。時間を置くか別回線で）'; }
+    throw new Error('ファイルDL失敗 id=' + fileId + ' — ' + hint);
+  }
   if(!res.ok) {
     let detail = '';
     try { const j = await res.json(); detail = j.error && (j.error.message || (j.error.errors && j.error.errors[0] && j.error.errors[0].reason)) || ''; } catch(e) {}
     throw new Error('ファイルDL失敗 HTTP ' + res.status + ' id=' + fileId + ' type=' + (mimeType||'?') + (detail ? ' — ' + detail : ''));
   }
-  return await res.arrayBuffer();
+  const buf = await res.arrayBuffer();
+  await cachePut(fileId, version, buf);
+  return buf;
 }
 
 // ショートカットは実体のIDに解決する
@@ -854,7 +909,7 @@ async function loadYearMonth(rootId, year, month, onFileLoaded, appendMode) {
       const csvOnly  = csvFiles.filter(f => /\.csv$/i.test(f.name));
 
       for(const f of csvOnly) {
-        const buf  = await downloadDriveFile(f.id, f.mimeType);
+        const buf  = await downloadDriveFile(f.id, f.mimeType, f.modifiedTime);
         const text = new TextDecoder('shift-jis').decode(buf);
         const rows = parseCSV(text).map(r => ({ ...r, _mall: mallCode, _file: f.name }));
         allRows.push(...rows);
@@ -868,7 +923,7 @@ async function loadYearMonth(rootId, year, month, onFileLoaded, appendMode) {
 
 async function refreshData() {
   setStatus('loading', 'Drive を確認中...');
-  folderCache.clear();
+  folderCache.clear(); listCache.clear();
   try {
     const rootId = cfg.folderId;
 
@@ -879,7 +934,7 @@ async function refreshData() {
     if(masterFile) {
       setStatus('loading', '商品マスタDB を読み込み中...');
       console.log('マスタDB:', masterFile.name, masterFile.mimeType, masterFile.id);
-      const buf = await downloadDriveFile(masterFile.id, masterFile.mimeType);
+      const buf = await downloadDriveFile(masterFile.id, masterFile.mimeType, masterFile.modifiedTime);
       masterMap = parseMasterXlsx(buf);
     }
 
@@ -892,7 +947,7 @@ async function refreshData() {
         const azFeeFiles = await driveList(azFeeFolder.id);
         const azFeeTargets = azFeeFiles.filter(f => /\.(csv|xlsx|xls)$/i.test(f.name));
         for(const f of azFeeTargets) {
-          const buf = await downloadDriveFile(f.id);
+          const buf = await downloadDriveFile(f.id, f.mimeType, f.modifiedTime);
           if(/\.xlsx?$/i.test(f.name)) {
             parseAzFeeXlsx(buf);
           } else {
@@ -911,7 +966,7 @@ async function refreshData() {
     try {
       const mabFile = rootFiles.find(f => /^mabararihyo/i.test(f.name));
       if(mabFile) {
-        const buf  = await downloadDriveFile(mabFile.id);
+        const buf  = await downloadDriveFile(mabFile.id, mabFile.mimeType, mabFile.modifiedTime);
         const text = new TextDecoder('shift-jis').decode(buf);
         parseMabCSV(text);
         console.log('mab粗利表読み込み完了:', mabMap.size, '件');
@@ -991,7 +1046,7 @@ async function onYmChange() {
     currentPeriod = 'all';
     document.querySelectorAll('.pbtn').forEach(b => b.classList.toggle('active', b.dataset.p === 'all'));
   }
-  folderCache.clear();
+  folderCache.clear(); listCache.clear();
   await loadAndRender(cfg.folderId, year, month);
 }
 
