@@ -562,7 +562,7 @@ async function startLoadingWithDrive() {
     const avgPrice    = entry.priceQty > 0 ? entry.totalPriceVal / entry.priceQty : null;
     const hasCost     = buyPrice !== null && avgPrice !== null;
     const totalProfit = hasCost
-      ? Math.round((avgPrice*(1-FEE_RATE)-buyPrice)*totalQty - shipFee) : null;
+      ? Math.round((avgPrice*(1-((m && m.ctcoCost) ? 0 : FEE_RATE))-buyPrice)*totalQty - shipFee) : null;
     const isNeg   = totalProfit !== null && totalProfit < 0;
     const profStr = totalProfit !== null
       ? (totalProfit >= 0 ? '+¥' : '-¥') + fmt(Math.abs(totalProfit)) : '—';
@@ -1492,8 +1492,8 @@ function aggregate(rows) {
     const bp = getBuyPrice(master, normDate(row['注文日']));
     row._buy = bp.price; row._disc = bp.disc;
     // AZはazFeeMapの手数料率、それ以外は10%
-    const feeRate = (mall === 'AZ' && azFeeMap.has(key))
-      ? azFeeMap.get(key) : 0.10;
+    const feeRate = (master && master.ctcoCost) ? 0          // CTCO: (仕入+送料)×1.1 がコスト。手数料は引かない
+      : (mall === 'AZ' && azFeeMap.has(key)) ? azFeeMap.get(key) : 0.10;
     if(!isCancelled) {
       e.qty += qty;
       if(price!==null){
@@ -2014,7 +2014,7 @@ function renderModal() {
     </div>
     <div class="modal-kpi" style="border-right:none">
       <div class="modal-kpi-label">手数料率${[...row.malls].includes('AZ') ? '　<span style="font-size:10px;color:var(--az)">AZ実績</span>' : ''}</div>
-      <div class="modal-kpi-val" style="color:var(--text2)">${((row.feeRate||0.1)*100).toFixed(1)}%</div>
+      <div class="modal-kpi-val" style="color:var(--text2)">${((row.feeRate!=null?row.feeRate:0.1)*100).toFixed(1)}%${row.master&&row.master.ctcoCost?' <span style="font-size:10px;color:var(--accent3)">CTCOは手数料なし</span>':''}</div>
     </div>
     <div class="modal-kpi" style="border-right:none">
       <div class="modal-kpi-label">在庫</div>
@@ -2046,7 +2046,7 @@ function renderModal() {
       <th class="num">全粗利</th><th class="num">全売上</th><th>モール</th>
     </tr></thead><tbody>`;
 
-  const feeRate = row.feeRate || 0.1;
+  const feeRate = row.feeRate != null ? row.feeRate : 0.1;
   row.rows.forEach(r => {
     const sp  = toNum(r['販売単価(税込)']);
     const qty = toNum(r['数量'])||1;
