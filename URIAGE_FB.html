@@ -554,7 +554,7 @@ async function startLoadingWithDrive() {
 
   function addRowToFeed(skuKey, entry) {
     const m = masterMap.get(skuKey) || null;
-    const buyPrice = m ? (m.buyPrice||0) : null;
+    const buyPrice = m ? (getBuyPrice(m, fmtDateInput(new Date())).price||0) : null;
     const shipFee  = m ? (m.shipFee||0)  : null;
     const totalQty    = entry.qty;
     const totalSales  = entry.totalSales;
@@ -1181,69 +1181,113 @@ function parseAzFeeCSV(text) {
   console.log('AZ手数料読み込み完了:', azFeeMap.size, '件');
 }
 
+// Excelシリアル値/文字列/Date → 'YYYY-MM-DD'
+function toDateStr(v) {
+  if(v===null||v===undefined||v==='') return null;
+  if(typeof v==='number' && v>20000) {
+    const d = new Date(Math.round((v-25569)*86400*1000));
+    return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+  }
+  if(v instanceof Date && !isNaN(v.getTime())) return fmtDateInput(v);
+  const s = String(v).trim();
+  let m = s.match(/(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})/);
+  if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  m = s.match(/^(\d{1,2})[\/月.-](\d{1,2})日?$/);   // 年なし → 今日に一番近い年で補完
+  if(m) {
+    const t = new Date(); let best=null, bd=Infinity;
+    for(const y of [t.getFullYear()-1, t.getFullYear(), t.getFullYear()+1]) {
+      const c = new Date(y, +m[1]-1, +m[2]); const df = Math.abs(c-t);
+      if(df<bd) { bd=df; best=c; }
+    }
+    return fmtDateInput(best);
+  }
+  return null;
+}
+function normDate(v) { return toDateStr(String(v||'')); }
+// CTCITNOの表記ゆれ吸収（数値/文字列、.0、先頭ゼロ）
+function normCtc(v) {
+  if(v===null||v===undefined||v==='') return '';
+  let s = typeof v==='number' ? String(Math.round(v)) : String(v).trim();
+  return s.replace(/\.0$/,'').replace(/^0+(?=\d)/,'');
+}
+
+// 注文日時点の仕入単価を返す（値引き履歴の期間内ならその価格）
+function getBuyPrice(m, dateStr) {
+  if(!m) return { price:null, disc:false };
+  if(m.discounts && m.discounts.length) {
+    const ds = dateStr || fmtDateInput(new Date());
+    const hits = m.discounts.filter(d => (!d.start || d.start<=ds) && d.end>=ds);
+    if(hits.length) {
+      hits.sort((a,b)=>(b.start||'').localeCompare(a.start||''));
+      return { price:hits[0].price, disc:true };
+    }
+    return { price:m.buyPrice||0, disc:false };
+  }
+  // 履歴なし：マスタの「値引中」列＋「値引き時価格」があれば従来どおり適用
+  if(m.masterSalePrice) return { price:m.masterSalePrice, disc:true };
+  return { price:m.buyPrice||0, disc:false };
+}
+
 function parseMasterXlsx(buf) {
   const wb = XLSX.read(buf, { type:'array' });
   const ws = wb.Sheets['全商品DB'];
   if(!ws) throw new Error('全商品DBシートが見つかりません');
   const data = XLSX.utils.sheet_to_json(ws, { defval:'' });
+  const todayStr = fmtDateInput(new Date());
 
-  // 値引き履歴シートを読み込んでCTCITNO→有効な値引き情報のMapを作る
+  // 値引き履歴: CTCITNO → [{start,end,price}]（終了済みも保持：過去の注文日に適用するため）
   const discountMap = new Map();
-  const wsDiscount = wb.Sheets['値引き履歴'];
+  const discSheetName = wb.SheetNames.includes('値引き履歴') ? '値引き履歴'
+    : wb.SheetNames.find(n => /値引/.test(n) && n !== '全商品DB');
+  const wsDiscount = discSheetName ? wb.Sheets[discSheetName] : null;
+  console.log('シート一覧:', wb.SheetNames, '→ 値引き履歴シート:', discSheetName || '見つからない');
+  let discRows = 0, discSkipped = 0;
   if(wsDiscount) {
     const ddata = XLSX.utils.sheet_to_json(wsDiscount, { defval:'' });
-    const today = new Date(); today.setHours(0,0,0,0);
+    const keys = ddata.length ? Object.keys(ddata[0]) : [];
+    const ctcKey   = keys.find(k => /CTCITNO/i.test(k)) || 'CTCITNO';
+    const priceKey = keys.find(k => /値引.?き?後価格/.test(k)) || '値引き後価格';
+    const startKey = keys.find(k => /開始/.test(k)) || null;
+    const endKey   = keys.find(k => /終了/.test(k)) || '値引き終了日';
+    console.log('値引き履歴 列:', { ctcKey, priceKey, startKey, endKey });
     ddata.forEach(row => {
-      // B列=CTCITNO
-      const rawCtc = row['CTCITNO'];
-      if(rawCtc===null||rawCtc===undefined||rawCtc==='') return;
-      const ctc = String(typeof rawCtc==='number' ? Math.round(rawCtc) : rawCtc).replace(/\.0$/,'').trim();
-      if(!ctc||ctc==='CTCITNO') return;
-
-      // E列=値引き後価格（仕入金額として使う）
-      const salePrice = toNum(row['値引き後価格']);
-      if(salePrice===null) return;
-
-      // F列=値引き終了日（cellDates:trueなしなのでシリアル値か文字列）
-      const endDateRaw = row['値引き終了日'];
-      let endDate = null;
-      if(typeof endDateRaw==='number' && endDateRaw>40000) {
-        endDate = new Date(Math.round((endDateRaw-25569)*86400*1000));
-      } else if(endDateRaw instanceof Date && !isNaN(endDateRaw.getTime())) {
-        endDate = endDateRaw;
-      } else if(typeof endDateRaw==='string' && endDateRaw.trim()) {
-        endDate = new Date(endDateRaw.trim());
-      }
-      if(!endDate||isNaN(endDate.getTime())) return;
-      endDate.setHours(0,0,0,0);
-      if(endDate < today) return;
-
-      const endDateStr = endDate.getFullYear()+'/'
-        +String(endDate.getMonth()+1).padStart(2,'0')+'/'
-        +String(endDate.getDate()).padStart(2,'0');
-
-      const existing = discountMap.get(ctc);
-      if(!existing||endDate>existing._endDate) {
-        discountMap.set(ctc, { salePrice, saleEndDateStr: endDateStr, _endDate: endDate });
-      }
+      const ctc = normCtc(row[ctcKey]);
+      if(!ctc || /ctcitno/i.test(ctc)) return;
+      const price = toNum(row[priceKey]);
+      const end   = toDateStr(row[endKey]);
+      if(price===null || !end) { discSkipped++; return; }
+      const start = startKey ? toDateStr(row[startKey]) : null;
+      if(!discountMap.has(ctc)) discountMap.set(ctc, []);
+      discountMap.get(ctc).push({ start, end, price });
+      discRows++;
     });
-    console.log('値引き履歴読み込み完了:', discountMap.size, '件有効');
-    console.log('サンプル:', [...discountMap.entries()].slice(0,3).map(([k,v])=>`${k}: ¥${v.salePrice} 〜${v.saleEndDateStr}`));
   }
 
+  const mKeys = data.length ? Object.keys(data[0]) : [];
+  const mCtcKey = mKeys.find(k => /CTCITNO/i.test(k)) || '__EMPTY';
+  console.log('マスタ側 CTCITNO列:', mCtcKey, '/ 先頭行の列名:', mKeys.slice(0,15));
   const map = new Map();
+  const matchedCtc = new Set();
   data.forEach(row => {
     const v = String(row['-variation']||'').trim();
     if(!v||v==='0') return;
     const key = normKey(v);
     const memo = String(row['MEMO']||'');
     const m = memo.match(/在庫0→(\d+)/);
-    const ctcitno = String(row['CTCITNO'] || row['__EMPTY'] || '').replace(/\.0$/,'').trim();
-      // 値引き履歴からCTCITNOで検索
-      const discountInfo = discountMap.get(ctcitno) || discountMap.get(String(Math.round(Number(ctcitno)))) || null;
-      // onSale = 値引き履歴に有効な記録 OR 全商品DBの値引中列に値がある
-      const onSaleFromMaster = String(row['値引中']||'').trim() !== '';
-      const onSale = discountInfo !== null || onSaleFromMaster;
+    const ctcRaw = row[mCtcKey] || row['CTCITNO'] || row['__EMPTY'];
+    const ctcitno = String(ctcRaw || '').replace(/\.0$/,'').trim();
+    const ctcNorm = normCtc(ctcRaw);
+    const discounts = discountMap.get(ctcNorm) || [];
+    if(discounts.length) matchedCtc.add(ctcNorm);
+
+    // 現在有効な値引き（表示用）
+    const active = discounts.filter(d => d.end>=todayStr && (!d.start || d.start<=todayStr))
+                            .sort((a,b)=>b.end.localeCompare(a.end))[0] || null;
+    const onSaleFromMaster = String(row['値引中']||'').trim() !== '';
+    const masterSalePrice = (()=>{ const x=toNum(row['値引き時価格']); return (onSaleFromMaster && x && x>0)?x:null; })();
+    const onSale = !!active || onSaleFromMaster;
 
     map.set(key, {
       name: String(row['商品名']||'').trim(),
@@ -1257,13 +1301,20 @@ function parseMasterXlsx(buf) {
       isDiscount: memo.includes('在庫0→'),
       discountOrigPrice: m ? parseInt(m[1],10) : null,
       ctcitno,
-      onSale: onSale,
-      salePrice:      discountInfo ? discountInfo.salePrice      : (()=>{ const v=toNum(row['値引き時価格']); return (v&&v>0)?v:null; })(),
-      saleEndDate:    discountInfo ? discountInfo.saleEndDateStr  : null,
-      asin: (()=>{ const v=String(row['商品ID']||'').trim(); return (v&&v!=='なし')?v:''; })(),
+      onSale,
+      discounts,
+      masterSalePrice,
+      salePrice:   active ? active.price : masterSalePrice,
+      saleEndDate: active ? active.end.replace(/-/g,'/') : null,
+      asin: (()=>{ const x=String(row['商品ID']||'').trim(); return (x&&x!=='なし')?x:''; })(),
       profitTarget: toNum(row['利益']),
     });
   });
+
+  const unmatched = [...discountMap.keys()].filter(k => !matchedCtc.has(k));
+  console.log('履歴側CTCITNO例:', [...discountMap.keys()].slice(0,5), '/ マスタ側CTCITNO例:', [...map.values()].slice(0,5).map(x=>x.ctcitno));
+  console.log('値引き履歴: 有効行', discRows, '/ 日付or価格不正でスキップ', discSkipped,
+    '/ CTCITNO', discountMap.size, '/ マスタに一致', matchedCtc.size, '/ 未一致', unmatched.length, unmatched.slice(0,10));
   return map;
 }
 
@@ -1296,12 +1347,15 @@ function aggregate(rows) {
         orderCount:0, multiOrderCount:0, cancelCount:0,
         totalShipFee:0,
         totalFeeAmount:0, // 手数料合計（AZは個別レート）
+        totalCost:0, costQty:0, discQty:0, // 仕入原価（注文日ごとの値引き反映）
       });
     }
     const e = skuMap.get(key);
     const status = String(row['処理/出荷日']||row['処理/出荷ステータス']||'');
     const isCancelled = status.includes('キャンセル');
     const shipFee = master ? (master.shipFee||0) : 0;
+    const bp = getBuyPrice(master, normDate(row['注文日']));
+    row._buy = bp.price; row._disc = bp.disc;
     // AZはazFeeMapの手数料率、それ以外は10%
     const feeRate = (mall === 'AZ' && azFeeMap.has(key))
       ? azFeeMap.get(key) : 0.10;
@@ -1313,6 +1367,7 @@ function aggregate(rows) {
         e.totalFeeAmount += price * qty * feeRate;
       }
       e.totalShipFee += shipFee;
+      if(bp.price!==null) { e.totalCost += bp.price*qty; e.costQty += qty; if(bp.disc) e.discQty += qty; }
     }
     e.malls.add(mall);
     e.rows.push(row);
@@ -1325,7 +1380,7 @@ function aggregate(rows) {
     const m = e.master;
     const buyPrice  = m ? (m.buyPrice||0) : null;
     const shipFee   = m ? (m.shipFee||0)  : null;
-    const effectiveBuyPrice = (m && m.onSale && m.salePrice) ? m.salePrice : buyPrice;
+    const effectiveBuyPrice = (m && e.costQty>0) ? e.totalCost/e.costQty : buyPrice;
 
     const totalPriceWeight = e.prices.reduce((s,p)=>s+p.price*p.qty,0);
     const totalQtyPriced   = e.prices.reduce((s,p)=>s+p.qty,0);
@@ -1343,7 +1398,7 @@ function aggregate(rows) {
     } else {
       const hasCost = effectiveBuyPrice!==null && avgSalesPrice!==null;
       unitProfit  = hasCost ? Math.round(avgSalesPrice*(1-effectiveFeeRate) - effectiveBuyPrice - shipFee) : null;
-      totalProfit = hasCost ? Math.round(e.totalSales*(1-effectiveFeeRate) - effectiveBuyPrice*e.qty - e.totalShipFee) : null;
+      totalProfit = hasCost ? Math.round(e.totalSales*(1-effectiveFeeRate) - (e.costQty>0 ? e.totalCost : effectiveBuyPrice*e.qty) - e.totalShipFee) : null;
     }
 
     return {
@@ -1351,6 +1406,7 @@ function aggregate(rows) {
       buyPrice: effectiveBuyPrice, shipFee, avgSalesPrice, unitProfit, totalProfit,
       feeRate: effectiveFeeRate,
       isMab,
+      discQty: e.discQty,
       isDiscount:     m ? m.isDiscount       : false,
       discountOrigPrice: m ? m.discountOrigPrice : null,
       onSale:         m ? m.onSale           : false,
@@ -1527,6 +1583,7 @@ function renderTable(data) {
       `<span class="badge badge-${s.toLowerCase()}">${MALLS[s].label}</span>`
     ).join('');
     const discBadge = row.isDiscount ? '<span class="badge badge-disc">★値引仕入</span>' : '';
+    const dpBadge = row.discQty>0 ? `<span class="badge badge-disc">値引価格適用 ${row.discQty}/${row.qty}</span>` : '';
     const nameColor = row.hasCancel ? 'color:var(--accent2)' : row.onSale ? 'color:var(--accent)' : '';
     const cancelBadge = row.hasCancel ? `<span class="badge badge-neg">✕キャンセル ${row.cancelCount}件</span>` : '';
 
@@ -1553,7 +1610,7 @@ function renderTable(data) {
       <td style="text-align:left;max-width:0;width:40%">
         <div class="prod-name">
           <span class="prod-name-text" style="${nameColor}">${esc(row.name)}</span>
-          ${srcBadges}${discBadge}${cancelBadge}
+          ${srcBadges}${discBadge}${dpBadge}${cancelBadge}
         </div>
         <div style="font-size:10px;color:var(--text3);margin-top:2px;font-family:monospace">${esc(row.rawCode)}</div>
       </td>
@@ -1817,8 +1874,8 @@ function renderModal() {
     <div class="modal-kpi"><div class="modal-kpi-label">全粗利</div>
       <div class="modal-kpi-val" style="color:${row.totalProfit!==null&&row.totalProfit<0?'var(--profit-neg)':'var(--profit-pos)'}">${profSign(row.totalProfit,'+')}</div></div>
     <div class="modal-kpi" style="border-right:none">
-      <div class="modal-kpi-label">仕入価格${row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':''}</div>
-      <div class="modal-kpi-val" style="${row.onSale?'color:var(--accent)':''}">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div>
+      <div class="modal-kpi-label">仕入価格${row.discQty>0?'　<span style="font-size:10px;color:var(--accent)">★値引適用 '+row.discQty+'/'+row.qty+'</span>':(row.onSale?'　<span style="font-size:10px;color:var(--accent)">★値引中</span>':'')}</div>
+      <div class="modal-kpi-val" style="${(row.onSale||row.discQty>0)?'color:var(--accent)':''}">¥${row.buyPrice!==null?fmt(row.buyPrice):'—'}</div>
     </div>
     <div class="modal-kpi" style="border-right:none">
       <div class="modal-kpi-label">手数料率${[...row.malls].includes('AZ') ? '　<span style="font-size:10px;color:var(--az)">AZ実績</span>' : ''}</div>
@@ -1840,6 +1897,10 @@ function renderModal() {
   if(row.isDiscount && row.discountOrigPrice) {
     bodyHtml += `<div class="modal-disc-note">★ 値引き仕入れ品　¥${fmt(row.buyPrice)}（元値 ¥${fmt(row.discountOrigPrice)}）</div>`;
   }
+  if(row.master) {
+    const ds = row.master.discounts || [];
+    bodyHtml += `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.7">CTCITNO <span style="font-family:monospace;color:var(--text2)">${esc(row.master.ctcitno||'（マスタ側が空）')}</span>　／　値引き履歴: ${ds.length ? ds.map(d=>`<span style="color:var(--accent)">${d.start||'?'}〜${d.end} ¥${fmt(d.price)}</span>`).join('　') : '<span style="color:var(--accent2)">一致なし</span>'}</div>`;
+  }
   bodyHtml += `<table class="detail-table">
     <thead><tr>
       <th>CTCITNO</th><th>注文日</th><th>処理/出荷ステータス</th><th>商品名</th>
@@ -1852,7 +1913,7 @@ function renderModal() {
   row.rows.forEach(r => {
     const sp  = toNum(r['販売単価(税込)']);
     const qty = toNum(r['数量'])||1;
-    const bp  = row.buyPrice;
+    const bp  = (r._buy!==undefined && r._buy!==null) ? r._buy : row.buyPrice;
     const sf  = row.shipFee;
     const hasCost = sp!==null && bp!==null;
     const up  = hasCost ? Math.round(sp*(1-feeRate)-bp-sf) : null;
@@ -1875,7 +1936,7 @@ function renderModal() {
       <td class="num" style="color:var(--text3)">¥${sp!==null?fmt(sp):'—'}</td>
       <td class="num">${qty}</td>
       <td class="num">¥${sf!==null?fmt(sf):'—'}</td>
-      <td class="num" style="${profC}">${up!==null?(up>=0?'+':'')+fmt(up):'—'}</td>
+      <td class="num" style="${profC}" title="仕入 ¥${bp!==null?fmt(bp):'—'}">${r._disc?'<span style="color:var(--accent)">★</span> ':''}${up!==null?(up>=0?'+':'')+fmt(up):'—'}</td>
       <td class="num" style="${profC}">${tp!==null?(tp>=0?'+':'')+fmt(tp):'—'}</td>
       <td class="num">¥${ts!==null?fmt(ts):'—'}</td>
       <td><span class="badge badge-${mall.toLowerCase()}">${MALLS[mall].label}</span></td>
